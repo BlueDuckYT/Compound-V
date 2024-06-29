@@ -1,0 +1,27 @@
+{
+  "item.compound_v.compound_v": "Compound V",
+  "item.compound_v.temp_v": "Temp V",
+
+
+  "effect.compound_v.generic": "Compound V",
+  "effect.compound_v.deep": "Compound V",
+  "effect.compound_v.speedster": "Compound V",
+  "effect.compound_v.atom_charging": "Compound V",
+  "effect.compound_v.night_vision": "Compound V",
+  "effect.compound_v.teleport": "Compound V",
+  "effect.compound_v.invisibility": "Compound V",
+  "effect.compound_v.levitation": "Compound V",
+  "effect.compound_v.invincible": "Compound V",
+
+
+  "effect.compound_v.charging": "Charging",
+
+
+
+  "effect.compound_v.slowness": "Compound V",
+  "effect.compound_v.floating": "Compound V",
+  "effect.compound_v.uncontrolled_teleport": "Compound V",
+
+  "key.category.compound_v.compound_v": "Compound V",
+  "key.category.compound_v.activate_power": "Activate Power"
+}

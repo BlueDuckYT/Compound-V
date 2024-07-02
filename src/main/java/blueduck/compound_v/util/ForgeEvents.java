@@ -5,6 +5,7 @@ import blueduck.compound_v.Config;
 import blueduck.compound_v.effect.CompoundVEffect;
 import blueduck.compound_v.registry.EffectReg;
 import blueduck.compound_v.registry.ItemReg;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -14,26 +15,61 @@ import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.npc.VillagerTrades;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.item.MilkBucketItem;
+import net.minecraft.world.item.enchantment.UntouchingEnchantment;
 import net.minecraft.world.item.trading.MerchantOffer;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.dimension.DimensionType;
 import net.minecraft.world.level.storage.loot.LootPool;
 import net.minecraft.world.level.storage.loot.entries.LootPoolEntryContainer;
 import net.minecraft.world.level.storage.loot.entries.LootTableReference;
 import net.minecraftforge.event.LootTableLoadEvent;
+import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.event.entity.ProjectileImpactEvent;
 import net.minecraftforge.event.entity.living.*;
 import net.minecraftforge.event.village.WandererTradesEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 @Mod.EventBusSubscriber(modid = CompoundVMod.MODID)
 public class ForgeEvents {
+
+    public static HashMap<Player, Collection<MobEffectInstance>> effectMap = new HashMap<>();
+    public static HashMap<Player, Boolean> wasInEnd = new HashMap<>();
+
+
+    @SubscribeEvent
+    public static void playerTickEvent(LivingEvent.LivingTickEvent event) {
+        Player player = event.getEntity() instanceof Player ? (Player) event.getEntity() : null;
+
+        if (player instanceof ServerPlayer) {
+            if (!wasInEnd.containsKey(player)) {
+                wasInEnd.put(player, player.level().dimension().location().equals(new ResourceLocation("the_end")));
+            }
+            if (wasInEnd.get(player)) {
+                if (!player.level().dimension().location().equals(new ResourceLocation("the_end"))) {
+                    Collection<MobEffectInstance> effects = effectMap.get(player);
+                    if (effects.size() > 0) {
+                        for (int i = 0; i < effects.size(); i++) {
+                            player.addEffect((MobEffectInstance) effects.toArray()[i]);
+                        }
+                    }
+                }
+                else {
+                    effectMap.put(player, player.getActiveEffects());
+                }
+            }
+            wasInEnd.put(player, player.level().dimension().location().equals(new ResourceLocation("the_end")));
+
+        }
+
+
+    }
 
     @SubscribeEvent
     public static void entityHurtEvent(LivingHurtEvent event) {

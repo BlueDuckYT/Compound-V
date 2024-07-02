@@ -42,7 +42,7 @@ public class EffectReg {
 
 
     public static void addEffectsToMatrix() {
-        CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(GENERIC.get(), 3), Config.weightGeneric);
+        CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(GENERIC.get(), 1), Config.weightGeneric);
         CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(SPEEDSTER.get(), 5), Config.weightSpeedster);
         CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(DEEP.get(), 1), Config.weightWater);
         CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(TELEPORT.get(), 1), Config.weightTeleport);

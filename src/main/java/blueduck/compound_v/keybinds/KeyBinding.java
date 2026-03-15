@@ -12,5 +12,4 @@ public class KeyBinding {
 
     public static final KeyMapping POWER_KEY = new KeyMapping(KEY_ACTIVATE, KeyConflictContext.IN_GAME,
             InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_V, KEY_CATEGORY);
-
 }

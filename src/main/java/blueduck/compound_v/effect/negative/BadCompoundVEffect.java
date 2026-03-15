@@ -3,7 +3,6 @@ package blueduck.compound_v.effect.negative;
 import blueduck.compound_v.effect.CompoundVEffect;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectCategory;
 import net.minecraft.world.entity.LivingEntity;
 
@@ -14,7 +13,6 @@ public class BadCompoundVEffect extends CompoundVEffect {
     }
 
     public void applyEffectTick(LivingEntity entity, int amplifier) {
-
     }
 
     public boolean isDurationEffectTick(int p_19455_, int p_19456_) {
@@ -27,7 +25,5 @@ public class BadCompoundVEffect extends CompoundVEffect {
     }
 
     public void activate(ServerPlayer player, int amplifier, ServerLevel level) {
-
-
     }
 }

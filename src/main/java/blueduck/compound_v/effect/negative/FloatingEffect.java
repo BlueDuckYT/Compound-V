@@ -18,6 +18,4 @@ public class FloatingEffect extends BadCompoundVEffect {
             entity.removeEffect(EffectReg.FLOATING.get());
         }
     }
-
-
 }

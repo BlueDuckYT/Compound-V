@@ -15,6 +15,4 @@ public class ItemReg {
 
     public static final RegistryObject<Item> COMPOUND_V = ITEMS.register("compound_v", () -> new CompoundVItem(new Item.Properties().food(new FoodProperties.Builder().alwaysEat().build()).stacksTo(1).rarity(Rarity.RARE), true));
     public static final RegistryObject<Item> TEMP_V = ITEMS.register("temp_v", () -> new CompoundVItem(new Item.Properties().food(new FoodProperties.Builder().alwaysEat().build()).stacksTo(1).rarity(Rarity.RARE), false));
-
-
 }

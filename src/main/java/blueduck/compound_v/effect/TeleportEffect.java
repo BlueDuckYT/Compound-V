@@ -1,5 +1,8 @@
 package blueduck.compound_v.effect;
 
+import blueduck.compound_v.Config;
+import net.minecraft.core.BlockPos;
+import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvent;
@@ -7,12 +10,12 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.util.Mth;
 import net.minecraft.world.effect.MobEffectCategory;
-import net.minecraft.world.effect.MobEffectInstance;
-import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.LivingEntity;
-import net.minecraft.world.entity.animal.Fox;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.gameevent.GameEvent;
+import net.minecraft.world.phys.BlockHitResult;
+import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
 public class TeleportEffect extends CompoundVEffect {
@@ -27,27 +30,49 @@ public class TeleportEffect extends CompoundVEffect {
     public void activate(ServerPlayer player, int amplifier, ServerLevel level) {
         super.activate(player, amplifier, level);
 
-        double d0 = player.getX();
-        double d1 = player.getY();
-        double d2 = player.getZ();
+        Vec3 eyePos = player.getEyePosition();
+        Vec3 lookVec = player.getLookAngle();
+        int range = getTeleportRange();
 
-        for(int i = 0; i < 16; ++i) {
-            double d3 = player.getX() + (player.getRandom().nextDouble() - 0.5D) * 32.0D;
-            double d4 = Mth.clamp(player.getY() + (double)(player.getRandom().nextInt(16) - 8), (double)level.getMinBuildHeight(), (double)(level.getMinBuildHeight() + (level).getLogicalHeight() - 1));
-            double d5 = player.getZ() + (player.getRandom().nextDouble() - 0.5D) * 32.0D;
-            if (player.isPassenger()) {
-                player.stopRiding();
-            }
+        Vec3 endPos = eyePos.add(lookVec.scale(range));
 
-            Vec3 vec3 = player.position();
-            level.gameEvent(GameEvent.TELEPORT, vec3, GameEvent.Context.of(player));
-            net.minecraftforge.event.entity.EntityTeleportEvent.ChorusFruit event = net.minecraftforge.event.ForgeEventFactory.onChorusFruitTeleport(player, d3, d4, d5);
-            if (player.randomTeleport(event.getTargetX(), event.getTargetY(), event.getTargetZ(), true)) {
-                SoundEvent soundevent = SoundEvents.ENDERMAN_TELEPORT;
-                level.playSound((Player)null, d0, d1, d2, soundevent, SoundSource.PLAYERS, 1.0F, 1.0F);
-                player.playSound(soundevent, 1.0F, 1.0F);
-                break;
+        BlockHitResult hit = level.clip(new ClipContext(
+                eyePos,
+                endPos,
+                ClipContext.Block.OUTLINE,
+                ClipContext.Fluid.NONE,
+                player
+        ));
+
+        if (hit.getType() == HitResult.Type.BLOCK) {
+
+            BlockPos target = hit.getBlockPos().relative(hit.getDirection());
+
+            if (level.isEmptyBlock(target) && level.isEmptyBlock(target.above())) {
+
+                level.sendParticles(
+                        ParticleTypes.PORTAL,
+                        player.getX(), player.getY() + 1, player.getZ(),
+                        30, 0.5, 1, 0.5, 0.5
+                );
+
+                double x = target.getX() + 0.5;
+                double y = target.getY();
+                double z = target.getZ() + 0.5;
+
+                player.teleportTo(x, y, z);
+
+                // Arrival particles
+                level.sendParticles(
+                        ParticleTypes.PORTAL,
+                        x, y + 1, z,
+                        30, 0.5, 1, 0.5, 0.5
+                );
             }
         }
+    }
+
+    public int getTeleportRange() {
+        return Config.teleportRange;
     }
 }

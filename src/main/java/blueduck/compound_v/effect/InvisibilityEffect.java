@@ -17,19 +17,15 @@ public class InvisibilityEffect extends CompoundVEffect {
         super.applyEffectTick(entity, amplifier);
         if (entity.hasEffect(MobEffects.INVISIBILITY) || !(entity instanceof Player)) {
             entity.addEffect(new MobEffectInstance(MobEffects.INVISIBILITY, 200, 0, false, false, false));
-
         }
     }
 
     public void activate(ServerPlayer player, int amplifier, ServerLevel level) {
         super.activate(player, amplifier, level);
-
-        if (!player.hasEffect(MobEffects.INVISIBILITY)) {
+        if (player.hasEffect(MobEffects.INVISIBILITY)) {
+            player.removeEffect(MobEffects.INVISIBILITY);
+        } else {
             player.addEffect(new MobEffectInstance(MobEffects.INVISIBILITY, 200, 0, false, false, false));
         }
-        else {
-            player.removeEffect(MobEffects.INVISIBILITY);
-        }
-
     }
 }

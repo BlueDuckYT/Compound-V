@@ -14,20 +14,17 @@ public class LevitationEffect extends CompoundVEffect {
 
     public void applyEffectTick(LivingEntity entity, int amplifier) {
         super.applyEffectTick(entity, amplifier);
-        if (entity instanceof ServerPlayer && entity.hasEffect(MobEffects.LEVITATION)) {
+        if (entity instanceof net.minecraft.server.level.ServerPlayer && entity.hasEffect(MobEffects.LEVITATION)) {
             entity.addEffect(new MobEffectInstance(MobEffects.LEVITATION, 200, 4, false, false, false));
         }
     }
 
     public void activate(ServerPlayer player, int amplifier, ServerLevel level) {
         super.activate(player, amplifier, level);
-
-        if (!player.hasEffect(MobEffects.LEVITATION)) {
+        if (player.hasEffect(MobEffects.LEVITATION)) {
+            player.removeEffect(MobEffects.LEVITATION);
+        } else {
             player.addEffect(new MobEffectInstance(MobEffects.LEVITATION, 200, 4, false, false, false));
         }
-        else {
-            player.removeEffect(MobEffects.LEVITATION);
-        }
-
     }
 }

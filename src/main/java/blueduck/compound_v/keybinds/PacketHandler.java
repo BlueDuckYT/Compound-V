@@ -1,7 +1,9 @@
 package blueduck.compound_v.keybinds;
 
 import blueduck.compound_v.CompoundVMod;
+import blueduck.compound_v.util.C2SHeldPowerPacket;
 import blueduck.compound_v.util.C2SPushPacket;
+import blueduck.compound_v.util.S2CLaserSyncPacket;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkDirection;
@@ -12,10 +14,10 @@ import net.minecraftforge.network.simple.SimpleChannel;
 public class PacketHandler {
 
     public static final SimpleChannel INSTANCE = NetworkRegistry.ChannelBuilder.named(
-            new ResourceLocation(CompoundVMod.MODID, "main"))
+                    new ResourceLocation(CompoundVMod.MODID, "main"))
             .serverAcceptedVersions((status) -> true)
             .clientAcceptedVersions((status) -> true)
-            .networkProtocolVersion(() -> "1.0")
+            .networkProtocolVersion(() -> "1.4")
             .simpleChannel();
 
     private static int packetId = 0;
@@ -29,6 +31,18 @@ public class PacketHandler {
                 .decoder(C2SPushPacket::new)
                 .encoder(C2SPushPacket::toBytes)
                 .consumerMainThread(C2SPushPacket::handle)
+                .add();
+
+        INSTANCE.messageBuilder(C2SHeldPowerPacket.class, id(), NetworkDirection.PLAY_TO_SERVER)
+                .decoder(C2SHeldPowerPacket::new)
+                .encoder(C2SHeldPowerPacket::toBytes)
+                .consumerMainThread(C2SHeldPowerPacket::handle)
+                .add();
+
+        INSTANCE.messageBuilder(S2CLaserSyncPacket.class, id(), NetworkDirection.PLAY_TO_CLIENT)
+                .decoder(S2CLaserSyncPacket::new)
+                .encoder(S2CLaserSyncPacket::toBytes)
+                .consumerMainThread(S2CLaserSyncPacket::handle)
                 .add();
     }
 
@@ -44,4 +58,7 @@ public class PacketHandler {
         INSTANCE.send(PacketDistributor.ALL.noArg(), msg);
     }
 
+    public static void sendToTrackingAndSelf(Object msg, net.minecraft.world.entity.Entity entity) {
+        INSTANCE.send(PacketDistributor.TRACKING_ENTITY_AND_SELF.with(() -> entity), msg);
+    }
 }

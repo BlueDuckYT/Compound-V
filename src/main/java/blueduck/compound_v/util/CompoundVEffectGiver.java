@@ -5,9 +5,8 @@ import net.minecraft.world.effect.MobEffect;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.item.ItemStack;
-import org.jetbrains.annotations.NotNull;
 
-import java.util.*;
+import java.util.ArrayList;
 
 public class CompoundVEffectGiver {
 
@@ -24,5 +23,4 @@ public class CompoundVEffectGiver {
         effect.setCurativeItems(new ArrayList<ItemStack>());
         entity.addEffect(effect);
     }
-
 }

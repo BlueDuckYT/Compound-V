@@ -3,18 +3,13 @@ package blueduck.compound_v.item;
 import blueduck.compound_v.Config;
 import blueduck.compound_v.effect.CompoundVEffect;
 import blueduck.compound_v.registry.CompoundVEffectMatrix;
-import net.minecraft.advancements.CriteriaTriggers;
-import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
-import net.minecraft.stats.Stats;
 import net.minecraft.world.effect.MobEffectInstance;
-import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.Items;
 import net.minecraft.world.item.UseAnim;
 import net.minecraft.world.level.Level;
 
@@ -51,9 +46,7 @@ public class CompoundVItem extends Item {
         if (!p_41349_.isClientSide && !hasCompVAlready(p_41350_)) {
             if (isBad) {
                 CompoundVEffectMatrix.FAILURE_MATRIX.get(p_41349_.getRandom().nextInt(CompoundVEffectMatrix.FAILURE_MATRIX.size())).apply(p_41350_, permanent);
-
-            }
-            else {
+            } else {
                 CompoundVEffectMatrix.EFFECT_MATRIX.get(p_41349_.getRandom().nextInt(CompoundVEffectMatrix.EFFECT_MATRIX.size())).apply(p_41350_, permanent);
             }
         }
@@ -75,5 +68,4 @@ public class CompoundVItem extends Item {
         }
         return false;
     }
-
 }

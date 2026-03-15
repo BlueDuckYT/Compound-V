@@ -10,7 +10,6 @@ public class CompoundVEffectMatrix {
 
     public static ArrayList<CompoundVEffectGiver> FAILURE_MATRIX = new ArrayList<>();
 
-
     public static void addEffect(CompoundVEffectGiver effect, int weight) {
         for (int i = 0; i < weight; i++) {
             EFFECT_MATRIX.add(effect);
@@ -22,5 +21,4 @@ public class CompoundVEffectMatrix {
             FAILURE_MATRIX.add(effect);
         }
     }
-
 }

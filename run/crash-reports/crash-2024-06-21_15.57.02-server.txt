@@ -1,0 +1,144 @@
+---- Minecraft Crash Report ----
+// I bet Cylons wouldn't have this problem.
+
+Time: 2024-06-21 15:57:02
+Description: Ticking player
+
+java.lang.IllegalArgumentException: Bound must be positive
+	at net.minecraft.world.level.levelgen.BitRandomSource.nextInt(BitRandomSource.java:17) ~[forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.jar%23191!/:?] {re:classloading}
+	at blueduck.compound_v.util.CompoundVEffectGiver.apply(CompoundVEffectGiver.java:19) ~[%23196!/:?] {re:classloading}
+	at blueduck.compound_v.item.CompoundVItem.finishUsingItem(CompoundVItem.java:50) ~[%23196!/:?] {re:classloading}
+	at net.minecraft.world.item.ItemStack.finishUsingItem(ItemStack.java:279) ~[forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.jar%23191!/:?] {re:classloading,xf:fml:forge:itemstack}
+	at net.minecraft.world.entity.LivingEntity.completeUsingItem(LivingEntity.java:3022) ~[forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.jar%23191!/:?] {re:classloading}
+	at net.minecraft.server.level.ServerPlayer.completeUsingItem(ServerPlayer.java:1102) ~[forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.jar%23191!/:?] {re:classloading,pl:accesstransformer:B}
+	at net.minecraft.world.entity.LivingEntity.updateUsingItem(LivingEntity.java:2904) ~[forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.jar%23191!/:?] {re:classloading}
+	at net.minecraft.server.level.ServerPlayer.updateUsingItem(ServerPlayer.java:1671) ~[forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.jar%23191!/:?] {re:classloading,pl:accesstransformer:B}
+	at net.minecraft.world.entity.LivingEntity.updatingUsingItem(LivingEntity.java:2886) ~[forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.jar%23191!/:?] {re:classloading}
+	at net.minecraft.world.entity.LivingEntity.tick(LivingEntity.java:2260) ~[forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.jar%23191!/:?] {re:classloading}
+	at net.minecraft.world.entity.player.Player.tick(Player.java:241) ~[forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.jar%23191!/:?] {re:classloading,pl:accesstransformer:B}
+	at net.minecraft.server.level.ServerPlayer.doTick(ServerPlayer.java:467) ~[forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.jar%23191!/:?] {re:classloading,pl:accesstransformer:B}
+	at net.minecraft.server.network.ServerGamePacketListenerImpl.tick(ServerGamePacketListenerImpl.java:262) ~[forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.jar%23191!/:?] {re:classloading,pl:accesstransformer:B}
+	at net.minecraft.network.Connection.tick(Connection.java:263) ~[forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.jar%23191!/:?] {re:classloading}
+	at net.minecraft.server.network.ServerConnectionListener.tick(ServerConnectionListener.java:142) ~[forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.jar%23191!/:?] {re:classloading}
+	at net.minecraft.server.MinecraftServer.tickChildren(MinecraftServer.java:907) ~[forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.jar%23191!/:?] {re:classloading,pl:accesstransformer:B}
+	at net.minecraft.server.MinecraftServer.tickServer(MinecraftServer.java:814) ~[forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.jar%23191!/:?] {re:classloading,pl:accesstransformer:B}
+	at net.minecraft.client.server.IntegratedServer.tickServer(IntegratedServer.java:89) ~[forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.jar%23191!/:?] {re:classloading,pl:runtimedistcleaner:A}
+	at net.minecraft.server.MinecraftServer.runServer(MinecraftServer.java:661) ~[forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.jar%23191!/:?] {re:classloading,pl:accesstransformer:B}
+	at net.minecraft.server.MinecraftServer.lambda$spin$2(MinecraftServer.java:251) ~[forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.jar%23191!/:?] {re:classloading,pl:accesstransformer:B}
+	at java.lang.Thread.run(Thread.java:833) ~[?:?] {}
+
+
+A detailed walkthrough of the error, its code path and all known details is as follows:
+---------------------------------------------------------------------------------------
+
+-- Head --
+Thread: Server thread
+Suspected Mod: 
+	Compound V (compound_v), Version: 1.0.0
+		at TRANSFORMER/compound_v@1.0.0/blueduck.compound_v.util.CompoundVEffectGiver.apply(CompoundVEffectGiver.java:19)
+Stacktrace:
+	at net.minecraft.world.level.levelgen.BitRandomSource.nextInt(BitRandomSource.java:17) ~[forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.jar%23191!/:?] {re:classloading}
+	at blueduck.compound_v.util.CompoundVEffectGiver.apply(CompoundVEffectGiver.java:19) ~[%23196!/:?] {re:classloading}
+	at blueduck.compound_v.item.CompoundVItem.finishUsingItem(CompoundVItem.java:50) ~[%23196!/:?] {re:classloading}
+	at net.minecraft.world.item.ItemStack.finishUsingItem(ItemStack.java:279) ~[forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.jar%23191!/:?] {re:classloading,xf:fml:forge:itemstack}
+	at net.minecraft.world.entity.LivingEntity.completeUsingItem(LivingEntity.java:3022) ~[forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.jar%23191!/:?] {re:classloading}
+	at net.minecraft.server.level.ServerPlayer.completeUsingItem(ServerPlayer.java:1102) ~[forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.jar%23191!/:?] {re:classloading,pl:accesstransformer:B}
+	at net.minecraft.world.entity.LivingEntity.updateUsingItem(LivingEntity.java:2904) ~[forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.jar%23191!/:?] {re:classloading}
+	at net.minecraft.server.level.ServerPlayer.updateUsingItem(ServerPlayer.java:1671) ~[forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.jar%23191!/:?] {re:classloading,pl:accesstransformer:B}
+	at net.minecraft.world.entity.LivingEntity.updatingUsingItem(LivingEntity.java:2886) ~[forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.jar%23191!/:?] {re:classloading}
+	at net.minecraft.world.entity.LivingEntity.tick(LivingEntity.java:2260) ~[forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.jar%23191!/:?] {re:classloading}
+	at net.minecraft.world.entity.player.Player.tick(Player.java:241) ~[forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.jar%23191!/:?] {re:classloading,pl:accesstransformer:B}
+-- Player being ticked --
+Details:
+	Entity Type: minecraft:player (net.minecraft.server.level.ServerPlayer)
+	Entity ID: 41
+	Entity Name: Dev
+	Entity's Exact location: -957.09, 61.20, 1003.82
+	Entity's Block location: World: (-958,61,1003), Section: (at 2,13,11 in -60,3,62; chunk contains blocks -960,-64,992 to -945,319,1007), Region: (-2,1; contains chunks -64,32 to -33,63, blocks -1024,-64,512 to -513,319,1023)
+	Entity's Momentum: 0.00, -0.00, 0.00
+	Entity's Passengers: []
+	Entity's Vehicle: null
+Stacktrace:
+	at net.minecraft.server.level.ServerPlayer.doTick(ServerPlayer.java:467) ~[forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.jar%23191!/:?] {re:classloading,pl:accesstransformer:B}
+	at net.minecraft.server.network.ServerGamePacketListenerImpl.tick(ServerGamePacketListenerImpl.java:262) ~[forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.jar%23191!/:?] {re:classloading,pl:accesstransformer:B}
+	at net.minecraft.network.Connection.tick(Connection.java:263) ~[forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.jar%23191!/:?] {re:classloading}
+	at net.minecraft.server.network.ServerConnectionListener.tick(ServerConnectionListener.java:142) ~[forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.jar%23191!/:?] {re:classloading}
+	at net.minecraft.server.MinecraftServer.tickChildren(MinecraftServer.java:907) ~[forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.jar%23191!/:?] {re:classloading,pl:accesstransformer:B}
+	at net.minecraft.server.MinecraftServer.tickServer(MinecraftServer.java:814) ~[forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.jar%23191!/:?] {re:classloading,pl:accesstransformer:B}
+	at net.minecraft.client.server.IntegratedServer.tickServer(IntegratedServer.java:89) ~[forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.jar%23191!/:?] {re:classloading,pl:runtimedistcleaner:A}
+	at net.minecraft.server.MinecraftServer.runServer(MinecraftServer.java:661) ~[forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.jar%23191!/:?] {re:classloading,pl:accesstransformer:B}
+	at net.minecraft.server.MinecraftServer.lambda$spin$2(MinecraftServer.java:251) ~[forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.jar%23191!/:?] {re:classloading,pl:accesstransformer:B}
+	at java.lang.Thread.run(Thread.java:833) ~[?:?] {}
+
+
+-- System Details --
+Details:
+	Minecraft Version: 1.20.1
+	Minecraft Version ID: 1.20.1
+	Operating System: Windows 10 (amd64) version 10.0
+	Java Version: 17.0.5, Amazon.com Inc.
+	Java VM Version: OpenJDK 64-Bit Server VM (mixed mode, sharing), Amazon.com Inc.
+	Memory: 367032016 bytes (350 MiB) / 2118123520 bytes (2020 MiB) up to 4131389440 bytes (3940 MiB)
+	CPUs: 16
+	Processor Vendor: AuthenticAMD
+	Processor Name: AMD Ryzen 7 5800H with Radeon Graphics         
+	Identifier: AuthenticAMD Family 25 Model 80 Stepping 0
+	Microarchitecture: Zen 3
+	Frequency (GHz): 3.19
+	Number of physical packages: 1
+	Number of physical CPUs: 8
+	Number of logical CPUs: 16
+	Graphics card #0 name: AMD Radeon RX 6700M
+	Graphics card #0 vendor: Advanced Micro Devices, Inc. (0x1002)
+	Graphics card #0 VRAM (MB): 4095.00
+	Graphics card #0 deviceId: 0x73df
+	Graphics card #0 versionInfo: DriverVersion=31.0.21029.6002
+	Graphics card #1 name: AMD Radeon(TM) Graphics
+	Graphics card #1 vendor: Advanced Micro Devices, Inc. (0x1002)
+	Graphics card #1 VRAM (MB): 512.00
+	Graphics card #1 deviceId: 0x1638
+	Graphics card #1 versionInfo: DriverVersion=31.0.21029.6002
+	Memory slot #0 capacity (MB): 8192.00
+	Memory slot #0 clockSpeed (GHz): 3.20
+	Memory slot #0 type: DDR4
+	Memory slot #1 capacity (MB): 8192.00
+	Memory slot #1 clockSpeed (GHz): 3.20
+	Memory slot #1 type: DDR4
+	Virtual memory max (MB): 28166.71
+	Virtual memory used (MB): 24528.50
+	Swap memory total (MB): 12411.94
+	Swap memory used (MB): 1567.48
+	JVM Flags: 1 total; -XX:HeapDumpPath=MojangTricksIntelDriversForPerformance_javaw.exe_minecraft.exe.heapdump
+	Server Running: true
+	Player Count: 1 / 8; [ServerPlayer['Dev'/41, l='ServerLevel[New World]', x=-957.09, y=61.20, z=1003.82]]
+	Data Packs: vanilla, mod:forge, mod:compound_v
+	Enabled Feature Flags: minecraft:vanilla
+	World Generation: Stable
+	Type: Integrated Server (map_client.txt)
+	Is Modded: Definitely; Client brand changed to 'forge'; Server brand changed to 'forge'
+	Launched Version: MOD_DEV
+	ModLauncher: 10.0.9+10.0.9+main.dcd20f30
+	ModLauncher launch target: forgeclientuserdev
+	ModLauncher naming: mcp
+	ModLauncher services: 
+		mixin-0.8.5.jar mixin PLUGINSERVICE 
+		eventbus-6.0.5.jar eventbus PLUGINSERVICE 
+		fmlloader-1.20.1-47.3.0.jar slf4jfixer PLUGINSERVICE 
+		fmlloader-1.20.1-47.3.0.jar object_holder_definalize PLUGINSERVICE 
+		fmlloader-1.20.1-47.3.0.jar runtime_enum_extender PLUGINSERVICE 
+		fmlloader-1.20.1-47.3.0.jar capability_token_subclass PLUGINSERVICE 
+		accesstransformers-8.0.4.jar accesstransformer PLUGINSERVICE 
+		fmlloader-1.20.1-47.3.0.jar runtimedistcleaner PLUGINSERVICE 
+		modlauncher-10.0.9.jar mixin TRANSFORMATIONSERVICE 
+		modlauncher-10.0.9.jar fml TRANSFORMATIONSERVICE 
+	FML Language Providers: 
+		minecraft@1.0
+		lowcodefml@null
+		javafml@null
+	Mod List: 
+		forge-1.20.1-47.3.0_mapped_official_1.20.1-recomp.|Minecraft                     |minecraft                     |1.20.1              |DONE      |Manifest: a1:d4:5e:04:4f:d3:d6:e0:7b:37:97:cf:77:b0:de:ad:4a:47:ce:8c:96:49:5f:0a:cf:8c:ae:b2:6d:4b:8a:3f
+		                                                  |Forge                         |forge                         |47.3.0              |DONE      |Manifest: NOSIGNATURE
+		main                                              |Compound V                    |compound_v                    |1.0.0               |DONE      |Manifest: NOSIGNATURE
+	Crash Report UUID: 837b3d46-7cf3-455e-9bce-3ca002353b0a
+	FML: 47.3
+	Forge: net.minecraftforge:47.3.0

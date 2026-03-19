@@ -49,12 +49,12 @@ public class LaserEyesAdvancedEffect extends LaserEyesEffect {
     }
 
     @Override
-    protected DustParticleOptions getCoreParticle(boolean blue) {
+    protected DustParticleOptions getCoreParticle(int colorIndex) {
         return RED_CORE;
     }
 
     @Override
-    protected DustParticleOptions getGlowParticle(boolean blue) {
+    protected DustParticleOptions getGlowParticle(int colorIndex) {
         return RED_GLOW;
     }
 

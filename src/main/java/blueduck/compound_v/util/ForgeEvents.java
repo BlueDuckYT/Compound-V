@@ -14,6 +14,7 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.damagesource.DamageTypes;
 import net.minecraft.world.effect.MobEffectInstance;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.npc.VillagerTrades;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
@@ -24,6 +25,7 @@ import net.minecraft.world.level.storage.loot.LootPool;
 import net.minecraft.world.level.storage.loot.entries.LootPoolEntryContainer;
 import net.minecraft.world.level.storage.loot.entries.LootTableReference;
 import net.minecraftforge.event.LootTableLoadEvent;
+import net.minecraftforge.event.entity.EntityJoinLevelEvent;
 import net.minecraftforge.event.entity.ProjectileImpactEvent;
 import net.minecraftforge.event.entity.living.*;
 import net.minecraftforge.event.village.WandererTradesEvent;
@@ -70,46 +72,69 @@ public class ForgeEvents {
         }
     }
 
+    // --- Mob Power Events ---
+
+    @SubscribeEvent
+    public static void entityJoinLevel(EntityJoinLevelEvent event) {
+        if (!Config.enableMobPowers) return;
+        if (!(event.getEntity() instanceof Mob mob)) return;
+        if (!(mob.level() instanceof ServerLevel level)) return;
+        MobPowerManager.onMobJoinLevel(mob, level);
+    }
+
+    @SubscribeEvent
+    public static void mobPowerTick(LivingEvent.LivingTickEvent event) {
+        if (!Config.enableMobPowers) return;
+        if (!(event.getEntity() instanceof Mob mob)) return;
+        if (!(mob.level() instanceof ServerLevel level)) return;
+        MobPowerManager.onMobTick(mob, level);
+    }
+
     @SubscribeEvent
     public static void entityHurtEvent(LivingHurtEvent event) {
         List<MobEffectInstance> effects = new ArrayList<>(event.getEntity().getActiveEffects());
         for (MobEffectInstance instance : effects) {
-            // Invincible: cancel all damage except void
+
             if (!event.getSource().is(DamageTypes.FELL_OUT_OF_WORLD)
                     && instance.getEffect().equals(EffectReg.INVINCIBLE.get())) {
                 event.setAmount(0);
             }
-            // Creative Flight: no fall damage
+
             if (event.getSource().is(DamageTypes.FALL)
                     && instance.getEffect().equals(EffectReg.CREATIVE_FLIGHT.get())) {
                 event.setAmount(0);
             }
-            // Advanced Laser Eyes (has flight): no fall damage
+
             else if (event.getSource().is(DamageTypes.FALL)
                     && instance.getEffect().equals(EffectReg.LASER_EYES_ADVANCED.get())) {
                 event.setAmount(0);
             }
-            // Density: no fall damage when dense mode is active
-            else if (event.getSource().is(DamageTypes.FALL)
-                    && instance.getEffect().equals(EffectReg.DENSITY.get())
+
+            else if (instance.getEffect().equals(EffectReg.DENSITY.get())
                     && event.getEntity() instanceof Player p
                     && DensityEffect.isDense(p.getUUID())) {
-                event.setAmount(0);
+                if (event.getSource().is(DamageTypes.FALL)) {
+                    event.setAmount(0);
+                }
+                else {
+                    event.setAmount((float) (event.getAmount() * Config.densityDamageMultiplier));
+                }
             }
-            // Spider: no fall damage (wall climbing / web swinging)
+
             else if (event.getSource().is(DamageTypes.FALL)
                     && instance.getEffect().equals(EffectReg.SPIDER.get())) {
                 event.setAmount(0);
             }
-            // General Compound V damage reduction
+            // General Compound V damage reduction (players only — mobs don't get this passive buff)
             else if (!event.getSource().is(DamageTypes.FELL_OUT_OF_WORLD)
+                    && event.getEntity() instanceof Player
                     && instance.getEffect() instanceof CompoundVEffect) {
                 event.setAmount((float) (event.getAmount() * Config.damageReduction));
             }
         }
 
-        // Strength multiplier for attackers with Compound V
-        if (event.getSource().getEntity() instanceof LivingEntity attacker) {
+        // Strength multiplier for players with Compound V (mobs don't get this passive buff)
+        if (event.getSource().getEntity() instanceof Player attacker) {
             for (MobEffectInstance instance : new ArrayList<>(attacker.getActiveEffects())) {
                 if (instance.getEffect() instanceof CompoundVEffect) {
                     event.setAmount((float) (event.getAmount() * Config.strengthMultiplier));
@@ -117,18 +142,29 @@ public class ForgeEvents {
             }
         }
 
-        // Power Absorption: feed damage into charge meter
         if (event.getEntity() instanceof ServerPlayer player
                 && player.hasEffect(EffectReg.POWER_ABSORPTION.get())
                 && event.getAmount() > 0) {
             PowerAbsorptionEffect.addCharge(player.getUUID(), event.getAmount());
+
+            if (event.getSource().is(DamageTypes.FALL)) {
+                event.setAmount(0);
+            }
         }
 
-        // Enhanced Regen: reset heal timer on damage
         if (event.getEntity() instanceof ServerPlayer player2
                 && player2.hasEffect(EffectReg.ENHANCED_REGEN.get())
                 && event.getAmount() > 0) {
             EnhancedRegenEffect.onPlayerDamaged(player2.getUUID(), player2.serverLevel().getGameTime());
+        }
+
+        // Track damage for powered mob regen
+        if (Config.enableMobPowers
+                && event.getEntity() instanceof Mob mob
+                && mob.hasEffect(EffectReg.ENHANCED_REGEN.get())
+                && mob.level() instanceof ServerLevel sl
+                && event.getAmount() > 0) {
+            MobPowerManager.onMobDamaged(mob.getUUID(), sl.getGameTime());
         }
     }
 
@@ -145,7 +181,8 @@ public class ForgeEvents {
                     && DensityEffect.isDense(p.getUUID())) {
                 event.setStrength(0);
             }
-            else if (instance.getEffect() instanceof CompoundVEffect) {
+            else if (instance.getEffect() instanceof CompoundVEffect
+                    && event.getEntity() instanceof Player) {
                 event.setStrength((float) (event.getOriginalStrength() * Config.knockbackReduction));
             }
         }

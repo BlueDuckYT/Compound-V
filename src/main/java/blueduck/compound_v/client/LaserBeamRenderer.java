@@ -1,6 +1,7 @@
 package blueduck.compound_v.client;
 
 import blueduck.compound_v.CompoundVMod;
+import blueduck.compound_v.util.S2CLaserSyncPacket;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
 import net.minecraft.client.Minecraft;
@@ -8,6 +9,7 @@ import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.api.distmarker.Dist;
@@ -22,6 +24,7 @@ import java.util.Map;
 @Mod.EventBusSubscriber(modid = CompoundVMod.MODID, value = Dist.CLIENT, bus = Mod.EventBusSubscriber.Bus.FORGE)
 public class LaserBeamRenderer {
 
+    // Player eye offsets
     private static final float EYE_SPACING = 0.1f;
     private static final float EYE_Y_OFFSET = -0.04f;
     private static final float FORWARD_OFFSET = 0.35f;
@@ -30,6 +33,23 @@ public class LaserBeamRenderer {
     private static final float CORE_HALF = 0.04f;
     private static final float GLOW_HALF = 0.12f;
     private static final float OUTER_HALF = 0.2f;
+
+    // --- Color palettes per colorIndex ---
+    // Each row: { white-hot core R,G,B, mid glow R,G,B, outer glow R,G,B }
+    private static final float[][] COLORS = {
+            // 0 = Orange
+            { 1.0f, 0.93f, 0.8f,   1.0f, 0.6f, 0.1f,   1.0f, 0.35f, 0.02f },
+            // 1 = Blue
+            { 0.85f, 0.92f, 1.0f,  0.2f, 0.5f, 1.0f,   0.1f, 0.3f, 1.0f },
+            // 2 = Red (Homelander advanced)
+            { 1.0f, 0.85f, 0.8f,   1.0f, 0.15f, 0.05f, 1.0f, 0.05f, 0.02f },
+            // 3 = Green
+            { 0.85f, 1.0f, 0.85f,  0.15f, 1.0f, 0.2f,  0.05f, 0.8f, 0.1f },
+            // 4 = Purple (Enderman, rare)
+            { 0.92f, 0.8f, 1.0f,   0.6f, 0.15f, 1.0f,  0.4f, 0.05f, 0.85f },
+            // 5 = Yellow (Husk, rare)
+            { 1.0f, 1.0f, 0.85f,   1.0f, 0.9f, 0.15f,  0.9f, 0.75f, 0.02f },
+    };
 
     @SubscribeEvent
     public static void onClientTick(TickEvent.ClientTickEvent event) {
@@ -56,55 +76,20 @@ public class LaserBeamRenderer {
 
         for (Map.Entry<Integer, LaserClientData.LaserInfo> entry : lasers.entrySet()) {
             Entity entity = mc.level.getEntity(entry.getKey());
-            if (!(entity instanceof Player player)) continue;
+            if (!(entity instanceof LivingEntity living)) continue;
 
             LaserClientData.LaserInfo info = entry.getValue();
             Vec3 hitPos = new Vec3(info.hitX, info.hitY, info.hitZ);
 
-            // Always use the entity's eye position — works correctly in F5 and for other players
-            Vec3 eyeCenter = player.getEyePosition(partialTick);
-            Vec3 lookDir = player.getViewVector(partialTick);
-            float yaw = Mth.lerp(partialTick, player.yRotO, player.getYRot());
-            float yawRad = (float) Math.toRadians(yaw);
-
-            Vec3 forward = lookDir.scale(FORWARD_OFFSET);
-            double rightX = -Math.cos(yawRad);
-            double rightZ = -Math.sin(yawRad);
-
-            Vec3 leftEye = eyeCenter.add(
-                    rightX * -EYE_SPACING + forward.x,
-                    EYE_Y_OFFSET + forward.y,
-                    rightZ * -EYE_SPACING + forward.z);
-            Vec3 rightEye = eyeCenter.add(
-                    rightX * EYE_SPACING + forward.x,
-                    EYE_Y_OFFSET + forward.y,
-                    rightZ * EYE_SPACING + forward.z);
-
-            // --- Color selection ---
-            // Core is near-white with a tint, glow is saturated color
-            float wr, wg, wb;   // white-hot core
-            float cr, cg, cb;   // mid glow
-            float gr, gg, gb;   // outer glow
-
-            if (info.advanced) {
-                // Homelander red
-                wr = 1.0f; wg = 0.85f; wb = 0.8f;     // white-pink hot core
-                cr = 1.0f; cg = 0.15f; cb = 0.05f;     // bright red mid
-                gr = 1.0f; gg = 0.05f; gb = 0.02f;     // deep red outer
-            } else if (info.blueVariant) {
-                // Blue
-                wr = 0.85f; wg = 0.92f; wb = 1.0f;     // white-blue hot core
-                cr = 0.2f;  cg = 0.5f;  cb = 1.0f;      // bright blue mid
-                gr = 0.1f;  gg = 0.3f;  gb = 1.0f;      // deep blue outer
-            } else {
-                // Orange
-                wr = 1.0f; wg = 0.93f; wb = 0.8f;      // white-warm hot core
-                cr = 1.0f; cg = 0.6f;  cb = 0.1f;       // bright orange mid
-                gr = 1.0f; gg = 0.35f; gb = 0.02f;      // deep orange outer
-            }
+            // --- Color selection from palette ---
+            int ci = Math.max(0, Math.min(info.colorIndex, COLORS.length - 1));
+            float[] c = COLORS[ci];
+            float wr = c[0], wg = c[1], wb = c[2];  // white-hot core
+            float cr = c[3], cg = c[4], cb = c[5];  // mid glow
+            float gr = c[6], gg = c[7], gb = c[8];  // outer glow
 
             // Subtle flicker
-            float time = (player.tickCount + partialTick) * 0.8f;
+            float time = (living.tickCount + partialTick) * 0.8f;
             float flicker = 0.92f + 0.08f * Mth.sin(time * 6.0f);
             float glowFlicker = 0.85f + 0.15f * Mth.sin(time * 3.5f + 1.0f);
 
@@ -112,22 +97,99 @@ public class LaserBeamRenderer {
             poseStack.translate(-camera.x, -camera.y, -camera.z);
             Matrix4f matrix = poseStack.last().pose();
 
-            // Each eye gets 3 layers: white-hot core, colored mid-glow, and wide outer glow
+            if (living instanceof Player player) {
+                // --- Player: dual-eye beams using view yaw ---
+                Vec3 eyeCenter = player.getEyePosition(partialTick);
+                Vec3 lookDir = player.getViewVector(partialTick);
+                float yaw = Mth.lerp(partialTick, player.yRotO, player.getYRot());
+                float yawRad = (float) Math.toRadians(yaw);
 
-            // --- Left eye beam ---
-            renderBeaconBeam(consumer, matrix, leftEye, hitPos, wr, wg, wb, 1.0f * flicker, CORE_HALF);
-            renderBeaconBeam(consumer, matrix, leftEye, hitPos, cr, cg, cb, 0.7f * flicker, GLOW_HALF);
-            renderBeaconBeam(consumer, matrix, leftEye, hitPos, gr, gg, gb, 0.2f * glowFlicker, OUTER_HALF);
+                Vec3 forward = lookDir.scale(FORWARD_OFFSET);
+                double rightX = -Math.cos(yawRad);
+                double rightZ = -Math.sin(yawRad);
 
-            // --- Right eye beam ---
-            renderBeaconBeam(consumer, matrix, rightEye, hitPos, wr, wg, wb, 1.0f * flicker, CORE_HALF);
-            renderBeaconBeam(consumer, matrix, rightEye, hitPos, cr, cg, cb, 0.7f * flicker, GLOW_HALF);
-            renderBeaconBeam(consumer, matrix, rightEye, hitPos, gr, gg, gb, 0.2f * glowFlicker, OUTER_HALF);
+                Vec3 leftEye = eyeCenter.add(
+                        rightX * -EYE_SPACING + forward.x,
+                        EYE_Y_OFFSET + forward.y,
+                        rightZ * -EYE_SPACING + forward.z);
+                Vec3 rightEye = eyeCenter.add(
+                        rightX * EYE_SPACING + forward.x,
+                        EYE_Y_OFFSET + forward.y,
+                        rightZ * EYE_SPACING + forward.z);
+
+                renderDualBeam(consumer, matrix, leftEye, rightEye, hitPos,
+                        wr, wg, wb, cr, cg, cb, gr, gg, gb, flicker, glowFlicker,
+                        CORE_HALF, GLOW_HALF, OUTER_HALF);
+            } else {
+                // --- Mob: dual-eye beams using head yaw ---
+                float headYaw = Mth.lerp(partialTick, living.yHeadRotO, living.yHeadRot);
+                float headYawRad = (float) Math.toRadians(headYaw);
+
+                // Interpolated position + eye height
+                Vec3 eyeCenter = new Vec3(
+                        Mth.lerp(partialTick, living.xo, living.getX()),
+                        Mth.lerp(partialTick, living.yo, living.getY()) + living.getEyeHeight(),
+                        Mth.lerp(partialTick, living.zo, living.getZ()));
+
+                // Scale eye spacing to mob width (tighter for small mobs, wider for big ones)
+                float mobWidth = living.getBbWidth();
+                float mobEyeSpacing = mobWidth * 0.15f; // ~0.09 for zombies (0.6 wide), ~0.15 for 1.0 wide mobs
+                float mobForwardOffset = mobWidth * 0.4f;
+
+                // Direction mob is looking
+                double fwdX = -Math.sin(headYawRad);
+                double fwdZ = Math.cos(headYawRad);
+                // Right vector (perpendicular to forward on XZ plane)
+                double rightX = -Math.cos(headYawRad);
+                double rightZ = -Math.sin(headYawRad);
+
+                Vec3 forward = new Vec3(fwdX * mobForwardOffset, 0, fwdZ * mobForwardOffset);
+
+                Vec3 leftEye = eyeCenter.add(
+                        rightX * -mobEyeSpacing + forward.x,
+                        forward.y,
+                        rightZ * -mobEyeSpacing + forward.z);
+                Vec3 rightEye = eyeCenter.add(
+                        rightX * mobEyeSpacing + forward.x,
+                        forward.y,
+                        rightZ * mobEyeSpacing + forward.z);
+
+                // Slightly thicker beams for mobs, scaled with size
+                float mobScale = Math.max(1.0f, mobWidth);
+                float mobCore = CORE_HALF * 1.1f * mobScale;
+                float mobGlow = GLOW_HALF * 1.1f * mobScale;
+                float mobOuter = OUTER_HALF * 1.0f * mobScale;
+
+                renderDualBeam(consumer, matrix, leftEye, rightEye, hitPos,
+                        wr, wg, wb, cr, cg, cb, gr, gg, gb, flicker, glowFlicker,
+                        mobCore, mobGlow, mobOuter);
+            }
 
             poseStack.popPose();
         }
 
         bufferSource.endBatch(RenderType.lightning());
+    }
+
+    /**
+     * Renders dual beams (left eye + right eye), each with 3 layers.
+     */
+    private static void renderDualBeam(VertexConsumer consumer, Matrix4f matrix,
+                                        Vec3 leftEye, Vec3 rightEye, Vec3 hitPos,
+                                        float wr, float wg, float wb,
+                                        float cr, float cg, float cb,
+                                        float gr, float gg, float gb,
+                                        float flicker, float glowFlicker,
+                                        float coreHalf, float glowHalf, float outerHalf) {
+        // Left eye beam (3 layers)
+        renderBeaconBeam(consumer, matrix, leftEye, hitPos, wr, wg, wb, 1.0f * flicker, coreHalf);
+        renderBeaconBeam(consumer, matrix, leftEye, hitPos, cr, cg, cb, 0.7f * flicker, glowHalf);
+        renderBeaconBeam(consumer, matrix, leftEye, hitPos, gr, gg, gb, 0.2f * glowFlicker, outerHalf);
+
+        // Right eye beam (3 layers)
+        renderBeaconBeam(consumer, matrix, rightEye, hitPos, wr, wg, wb, 1.0f * flicker, coreHalf);
+        renderBeaconBeam(consumer, matrix, rightEye, hitPos, cr, cg, cb, 0.7f * flicker, glowHalf);
+        renderBeaconBeam(consumer, matrix, rightEye, hitPos, gr, gg, gb, 0.2f * glowFlicker, outerHalf);
     }
 
     /**

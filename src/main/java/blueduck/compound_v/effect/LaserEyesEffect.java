@@ -41,6 +41,18 @@ public class LaserEyesEffect extends CompoundVEffect {
             new Vector3f(0.15f, 0.4f, 1.0f), 1.2f);
     protected static final DustParticleOptions LASER_GLOW_BLUE = new DustParticleOptions(
             new Vector3f(0.3f, 0.6f, 1.0f), 0.6f);
+    protected static final DustParticleOptions LASER_CORE_GREEN = new DustParticleOptions(
+            new Vector3f(0.1f, 1.0f, 0.2f), 1.2f);
+    protected static final DustParticleOptions LASER_GLOW_GREEN = new DustParticleOptions(
+            new Vector3f(0.3f, 1.0f, 0.4f), 0.6f);
+    protected static final DustParticleOptions LASER_CORE_PURPLE = new DustParticleOptions(
+            new Vector3f(0.6f, 0.15f, 1.0f), 1.2f);
+    protected static final DustParticleOptions LASER_GLOW_PURPLE = new DustParticleOptions(
+            new Vector3f(0.4f, 0.05f, 0.85f), 0.6f);
+    protected static final DustParticleOptions LASER_CORE_YELLOW = new DustParticleOptions(
+            new Vector3f(1.0f, 0.9f, 0.15f), 1.2f);
+    protected static final DustParticleOptions LASER_GLOW_YELLOW = new DustParticleOptions(
+            new Vector3f(0.9f, 0.75f, 0.02f), 0.6f);
 
     public LaserEyesEffect(MobEffectCategory category) {
         super(category);
@@ -62,19 +74,48 @@ public class LaserEyesEffect extends CompoundVEffect {
         return false;
     }
 
-    protected boolean isBlueVariant(ServerPlayer player) {
-        if (isAdvanced()) return false;
+    /**
+     * Determines the laser color for this player.
+     * Advanced: always red. Basic: even 20% split across orange, blue, green, purple, yellow.
+     * Color is stable per-player per-world (seeded from UUID + world seed).
+     */
+    protected int getPlayerColorIndex(ServerPlayer player) {
+        if (isAdvanced()) return S2CLaserSyncPacket.COLOR_RED;
 
-        long hash = player.getUUID().getMostSignificantBits() ^ player.getUUID().getLeastSignificantBits();
-        return (hash & 1L) == 0;
+        long uuidHash = player.getUUID().getMostSignificantBits() ^ player.getUUID().getLeastSignificantBits();
+        long seed = player.serverLevel().getSeed();
+        // Mix UUID and world seed so the same player gets different colors on different worlds
+        long hash = uuidHash * 6364136223846793005L + seed;
+        // Use a wide bit range for a clean 5-way split, deterministic per player+world
+        int bucket = (int) (((hash >>> 4) & 0xFFFFFFL) % 5);
+        return switch (bucket) {
+            case 0 -> S2CLaserSyncPacket.COLOR_ORANGE;
+            case 1 -> S2CLaserSyncPacket.COLOR_BLUE;
+            case 2 -> S2CLaserSyncPacket.COLOR_GREEN;
+            case 3 -> S2CLaserSyncPacket.COLOR_PURPLE;
+            case 4 -> S2CLaserSyncPacket.COLOR_YELLOW;
+            default -> S2CLaserSyncPacket.COLOR_ORANGE;
+        };
     }
 
-    protected DustParticleOptions getCoreParticle(boolean blue) {
-        return blue ? LASER_CORE_BLUE : LASER_CORE_ORANGE;
+    protected DustParticleOptions getCoreParticle(int colorIndex) {
+        return switch (colorIndex) {
+            case S2CLaserSyncPacket.COLOR_BLUE -> LASER_CORE_BLUE;
+            case S2CLaserSyncPacket.COLOR_GREEN -> LASER_CORE_GREEN;
+            case S2CLaserSyncPacket.COLOR_PURPLE -> LASER_CORE_PURPLE;
+            case S2CLaserSyncPacket.COLOR_YELLOW -> LASER_CORE_YELLOW;
+            default -> LASER_CORE_ORANGE;
+        };
     }
 
-    protected DustParticleOptions getGlowParticle(boolean blue) {
-        return blue ? LASER_GLOW_BLUE : LASER_GLOW_ORANGE;
+    protected DustParticleOptions getGlowParticle(int colorIndex) {
+        return switch (colorIndex) {
+            case S2CLaserSyncPacket.COLOR_BLUE -> LASER_GLOW_BLUE;
+            case S2CLaserSyncPacket.COLOR_GREEN -> LASER_GLOW_GREEN;
+            case S2CLaserSyncPacket.COLOR_PURPLE -> LASER_GLOW_PURPLE;
+            case S2CLaserSyncPacket.COLOR_YELLOW -> LASER_GLOW_YELLOW;
+            default -> LASER_GLOW_ORANGE;
+        };
     }
 
     @Override
@@ -107,7 +148,7 @@ public class LaserEyesEffect extends CompoundVEffect {
     }
 
     protected void fireLaser(ServerPlayer player, int amplifier, ServerLevel level) {
-        boolean blue = isBlueVariant(player);
+        int colorIndex = getPlayerColorIndex(player);
 
         Vec3 eyePos = player.getEyePosition(1.0F);
         Vec3 lookVec = player.getLookAngle();
@@ -192,10 +233,10 @@ public class LaserEyesEffect extends CompoundVEffect {
         // --- Visual mode ---
         if (Config.laserVisualMode == Config.LaserVisualMode.BEAM) {
             PacketHandler.sendToTrackingAndSelf(
-                    new S2CLaserSyncPacket(player.getId(), hitPos.x, hitPos.y, hitPos.z, isAdvanced(), blue),
+                    new S2CLaserSyncPacket(player.getId(), hitPos.x, hitPos.y, hitPos.z, colorIndex),
                     player);
         } else {
-            spawnBeamParticles(level, eyePos, hitPos, beamLength, blue);
+            spawnBeamParticles(level, eyePos, hitPos, beamLength, colorIndex);
         }
 
         // --- Sound ---
@@ -259,10 +300,10 @@ public class LaserEyesEffect extends CompoundVEffect {
         }
     }
 
-    protected void spawnBeamParticles(ServerLevel level, Vec3 start, Vec3 end, double length, boolean blue) {
+    protected void spawnBeamParticles(ServerLevel level, Vec3 start, Vec3 end, double length, int colorIndex) {
         Vec3 dir = end.subtract(start).normalize();
-        DustParticleOptions core = getCoreParticle(blue);
-        DustParticleOptions glow = getGlowParticle(blue);
+        DustParticleOptions core = getCoreParticle(colorIndex);
+        DustParticleOptions glow = getGlowParticle(colorIndex);
         double step = 0.5;
         for (double d = 1.0; d < length; d += step) {
             double x = start.x + dir.x * d;

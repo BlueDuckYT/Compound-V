@@ -76,7 +76,25 @@ public class DensityEffect extends CompoundVEffect {
             return;
         }
 
-        player.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 30, 1, false, false, false));
+        if (player.isInWater()) {
+            Vec3 motion = player.getDeltaMovement();
+
+            double sinkRate = -0.15;
+            double maxSinkSpeed = -0.5;
+            double newY = Math.max(motion.y + sinkRate, maxSinkSpeed);
+
+            player.setDeltaMovement(motion.x * 0.85, newY, motion.z * 0.85);
+
+            player.setSprinting(false);
+        }
+        else {
+            Vec3 motion = player.getDeltaMovement();
+
+            double sinkRate = -0.15;
+            double newY = Math.max(motion.y + sinkRate, -1.0);
+        }
+
+        player.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 30, 2, false, false, false));
 
         boolean onGround = player.onGround();
         boolean airLastTick = wasInAir.contains(uuid);

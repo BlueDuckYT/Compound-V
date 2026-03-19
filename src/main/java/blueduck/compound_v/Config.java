@@ -117,6 +117,9 @@ public class Config {
     private static final ForgeConfigSpec.IntValue WEIGHT_DENSITY = BUILDER
             .comment("Weight of obtaining Density Manipulation when taking Compound V")
             .defineInRange("weight_density", 5, 0, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.DoubleValue DENSITY_DAMAGE_REDUCTION = BUILDER
+            .comment("Damage multiplier of damage taken while on Compound V")
+            .defineInRange("damageReduction", 0.5, 0, 1);
     private static final ForgeConfigSpec.IntValue WEIGHT_SPIDER = BUILDER
             .comment("Weight of obtaining Spider powers when taking Compound V")
             .defineInRange("weight_spider", 5, 0, Integer.MAX_VALUE);
@@ -146,6 +149,14 @@ public class Config {
     private static final ForgeConfigSpec.EnumValue<LaserVisualMode> LASER_VISUAL_MODE = BUILDER
             .comment("Visual mode for laser eyes: BEAM (rendered glowing beams) or PARTICLE (particle trail)")
             .defineEnum("laserVisualMode", LaserVisualMode.BEAM);
+
+    // --- Mob Powers ---
+    private static final ForgeConfigSpec.BooleanValue ENABLE_MOB_POWERS = BUILDER
+            .comment("Whether hostile mobs can spawn with Compound V powers (disabled by default)")
+            .define("enableMobPowers", false);
+    private static final ForgeConfigSpec.DoubleValue MOB_POWER_SPAWN_CHANCE = BUILDER
+            .comment("Chance (0.0 to 1.0) that a hostile mob spawns with a power when mob powers are enabled")
+            .defineInRange("mobPowerSpawnChance", 0.05, 0.0, 1.0);
 
     static final ForgeConfigSpec SPEC = BUILDER.build();
 
@@ -188,6 +199,7 @@ public class Config {
     public static int weightHeadPop;
     public static int weightEnhancedRegen;
     public static int weightDensity;
+    public static double densityDamageMultiplier;
     public static int weightSpider;
     public static double laserBasicDamage;
     public static double laserAdvancedDamage;
@@ -197,6 +209,8 @@ public class Config {
     public static double laserAdvancedFireChance;
     public static float shrinkScale;
     public static LaserVisualMode laserVisualMode;
+    public static boolean enableMobPowers;
+    public static double mobPowerSpawnChance;
 
     @SubscribeEvent
     static void onLoad(final ModConfigEvent event) {
@@ -233,6 +247,7 @@ public class Config {
         weightHeadPop = WEIGHT_HEAD_POP.get();
         weightEnhancedRegen = WEIGHT_ENHANCED_REGEN.get();
         weightDensity = WEIGHT_DENSITY.get();
+        densityDamageMultiplier = COMPOUND_V_DAMAGE_REDUCTION.get();
         weightSpider = WEIGHT_SPIDER.get();
         laserBasicDamage = LASER_BASIC_DAMAGE.get();
         laserAdvancedDamage = LASER_ADVANCED_DAMAGE.get();
@@ -242,5 +257,7 @@ public class Config {
         laserAdvancedFireChance = LASER_ADVANCED_FIRE_CHANCE.get();
         shrinkScale = SHRINK_SCALE.get().floatValue();
         laserVisualMode = LASER_VISUAL_MODE.get();
+        enableMobPowers = ENABLE_MOB_POWERS.get();
+        mobPowerSpawnChance = MOB_POWER_SPAWN_CHANCE.get();
     }
 }

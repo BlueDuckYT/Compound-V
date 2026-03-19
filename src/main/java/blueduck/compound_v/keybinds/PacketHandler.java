@@ -17,7 +17,7 @@ public class PacketHandler {
                     new ResourceLocation(CompoundVMod.MODID, "main"))
             .serverAcceptedVersions((status) -> true)
             .clientAcceptedVersions((status) -> true)
-            .networkProtocolVersion(() -> "1.4")
+            .networkProtocolVersion(() -> "1.5")
             .simpleChannel();
 
     private static int packetId = 0;

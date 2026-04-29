@@ -59,6 +59,21 @@ public class LaserEyesAdvancedEffect extends LaserEyesEffect {
     }
 
     @Override
+    public double getStrengthMultiplier(int amplifier) {
+        return super.getStrengthMultiplier(amplifier) * 2.0; // Double the damage boost
+    }
+
+    @Override
+    public double getDamageReduction(int amplifier) {
+        return super.getDamageReduction(amplifier) * 0.7; // 30% more damage reduction on top of base
+    }
+
+    @Override
+    public double getKnockbackReduction(int amplifier) {
+        return super.getKnockbackReduction(amplifier) * 0.5; // Half the knockback
+    }
+
+    @Override
     public void applyEffectTick(LivingEntity entity, int amplifier) {
         super.applyEffectTick(entity, amplifier);
 

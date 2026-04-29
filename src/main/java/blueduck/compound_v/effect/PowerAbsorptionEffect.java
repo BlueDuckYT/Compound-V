@@ -208,6 +208,16 @@ public class PowerAbsorptionEffect extends CompoundVEffect {
         }
     }
 
+    @Override
+    public double getStrengthMultiplier(int amplifier) {
+        return super.getStrengthMultiplier(amplifier) * 1.75; // Energy absorption amplifies melee output
+    }
+
+    @Override
+    public double getDamageReduction(int amplifier) {
+        return super.getDamageReduction(amplifier) * 0.8; // Absorbs some incoming damage as energy
+    }
+
     // ---- Internal ----
 
     private static class LingeringDischarge {

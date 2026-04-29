@@ -201,4 +201,14 @@ public class SonicScreamEffect extends CompoundVEffect {
             cooldownUntil.remove(player.getUUID());
         }
     }
+
+    @Override
+    public double getStrengthMultiplier(int amplifier) {
+        return super.getStrengthMultiplier(amplifier) * 1.5; // Sonic-powered hits
+    }
+
+    @Override
+    public double getKnockbackReduction(int amplifier) {
+        return super.getKnockbackReduction(amplifier) * 0.6; // Braced for impact
+    }
 }

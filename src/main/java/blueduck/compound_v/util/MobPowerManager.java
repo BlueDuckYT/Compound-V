@@ -52,6 +52,10 @@ public class MobPowerManager {
     private static final DustParticleOptions POWER_SPARKLE_BRIGHT = new DustParticleOptions(
             new Vector3f(0.4f, 0.7f, 1.0f), 0.5f);
 
+    // --- Mob berserker particles ---
+    private static final DustParticleOptions MOB_RAGE_RED = new DustParticleOptions(
+            new Vector3f(0.9f, 0.1f, 0.05f), 1.0f);
+
     // --- Mob laser particles (per-color variants for PARTICLE mode) ---
     private static final DustParticleOptions LASER_CORE_ORANGE = new DustParticleOptions(
             new Vector3f(1.0f, 0.6f, 0.1f), 1.0f);
@@ -100,6 +104,7 @@ public class MobPowerManager {
     // --- NBT tag to mark mobs that have already been rolled ---
     private static final String CHECKED_TAG = "compound_v_checked";
     private static final String POWERED_TAG = "compound_v_powered";
+    private static final String NATURAL_TAG = "compound_v_natural";
     private static final String LASER_COLOR_TAG = "compound_v_laser_color";
 
     // --- Mob size scaling ---
@@ -163,6 +168,7 @@ public class MobPowerManager {
                 chosen.power().get(), MobEffectInstance.INFINITE_DURATION, amp, false, false, false);
         mob.addEffect(effect);
         mob.getPersistentData().putBoolean(POWERED_TAG, true);
+        mob.getPersistentData().putBoolean(NATURAL_TAG, true);
 
         // If the mob got laser eyes, roll a species-dependent laser color and store it
         if (chosen.power() == EffectReg.LASER_EYES_BASIC) {
@@ -173,6 +179,14 @@ public class MobPowerManager {
         // Shrink mobs start small immediately (stealth — they grow when aggroed)
         if (chosen.power() == EffectReg.SHRINK && ModList.get().isLoaded("pehkui")) {
             PehkuiHelper.setScale(mob, MOB_SHRINK_SCALE);
+        }
+
+        // Radioactive mobs get Irradiated I immediately for the green glow visual
+        if (chosen.power() == EffectReg.RADIOACTIVE && ModList.get().isLoaded("alexscaves")) {
+            net.minecraft.world.effect.MobEffect irradiated = blueduck.compound_v.effect.RadioactiveEffect.getIrradiatedEffect();
+            if (irradiated != null) {
+                mob.addEffect(new MobEffectInstance(irradiated, MobEffectInstance.INFINITE_DURATION, 0, false, false, false));
+            }
         }
     }
 
@@ -251,15 +265,18 @@ public class MobPowerManager {
             eligible.add(new WeightedPower(EffectReg.TELEPORT, 4, 0, 0));
             eligible.add(new WeightedPower(EffectReg.ENHANCED_REGEN, 3, 0, 0));
             eligible.add(new WeightedPower(EffectReg.SPEEDSTER, 3, 0, 3));  // levels 1-4
+            eligible.add(new WeightedPower(EffectReg.BERSERKER, 4, 0, 0));
         }
 
         // === Skeleton family (Skeleton, Stray, WitherSkeleton) ===
         if (mob instanceof AbstractSkeleton) {
             eligible.add(new WeightedPower(EffectReg.ATOM_CHARGING, 8, 0, 2));  // levels 1-3
             eligible.add(new WeightedPower(EffectReg.TELEPORT, 4, 0, 0));
+            eligible.add(new WeightedPower(EffectReg.PROJECTILE_IMMUNITY, 2, 0, 0)); // ironic — arrows bounce off them
             if (mob instanceof WitherSkeleton) {
 
                 eligible.add(new WeightedPower(EffectReg.LASER_EYES_BASIC, 1, 0, 0));
+                eligible.add(new WeightedPower(EffectReg.BERSERKER, 3, 0, 0));
             }
         }
 
@@ -267,6 +284,7 @@ public class MobPowerManager {
         if (mob instanceof AbstractIllager) {
             eligible.add(new WeightedPower(EffectReg.ATOM_CHARGING, 8, 0, 2));  // levels 1-3
             eligible.add(new WeightedPower(EffectReg.SPEEDSTER, 3, 0, 3));      // levels 1-4
+            eligible.add(new WeightedPower(EffectReg.BERSERKER, 4, 0, 0));
         }
 
         // === Enderman ===
@@ -306,6 +324,7 @@ public class MobPowerManager {
         if (mob instanceof AbstractPiglin) {
             eligible.add(new WeightedPower(EffectReg.SPEEDSTER, 5, 0, 3));      // levels 1-4
             eligible.add(new WeightedPower(EffectReg.ATOM_CHARGING, 5, 0, 2));  // levels 1-3
+            eligible.add(new WeightedPower(EffectReg.BERSERKER, 4, 0, 0));
         }
 
         // === Fallback: any Monster with no specific pairings gets regen ===
@@ -316,13 +335,27 @@ public class MobPowerManager {
         // === Universal options for ALL monsters ===
         eligible.add(new WeightedPower(EffectReg.ENHANCED_REGEN, 4, 0, 0));
         eligible.add(new WeightedPower(EffectReg.INVISIBILITY, 2, 0, 0));  // very rare — blue sparkles still visible
-        eligible.add(new WeightedPower(EffectReg.INVINCIBLE, 1, 0, 0));    // extremely rare
+        if (Config.weightInvincible > 0) {
+            eligible.add(new WeightedPower(EffectReg.INVINCIBLE, 1, 0, 0)); // extremely rare
+        }
+//        if (Config.weightStarPower > 0) {
+//            eligible.add(new WeightedPower(EffectReg.STAR_POWER, 1, 0, 0)); // extremely rare
+//        }
+
+        eligible.add(new WeightedPower(EffectReg.BERSERKER, 3, 0, 0));     // any mob can go berserk
+        eligible.add(new WeightedPower(EffectReg.PROJECTILE_IMMUNITY, 2, 0, 0)); // rare — forces melee
+        eligible.add(new WeightedPower(EffectReg.MAGNETISM, 1, 0, 0));
 
         // === Pehkui-dependent: Shrink and Enlarge for ALL monsters ===
         if (ModList.get().isLoaded("pehkui")) {
             eligible.add(new WeightedPower(EffectReg.SHRINK, 3, 0, 0));
             eligible.add(new WeightedPower(EffectReg.ENLARGE, 3, 0, 0));
         }
+
+        // === Alex's Caves-dependent: Radioactive — disabled pending AC glow shader compatibility
+        // if (ModList.get().isLoaded("alexscaves")) {
+        //     eligible.add(new WeightedPower(EffectReg.RADIOACTIVE, 2, 0, 0));
+        // }
 
         return eligible;
     }
@@ -395,6 +428,27 @@ public class MobPowerManager {
         // Shrink: small by default, grow to normal when aggroed (stealth attack)
         if (mob.hasEffect(EffectReg.SHRINK.get()) && ModList.get().isLoaded("pehkui")) {
             tickMobShrink(mob, target, level);
+        }
+
+        // Berserker: red particle aura that intensifies as health drops
+        if (mob.hasEffect(EffectReg.BERSERKER.get())) {
+            float missingPercent = 1.0f - (mob.getHealth() / mob.getMaxHealth());
+            if (missingPercent > 0.1f && mob.tickCount % 8 == 0) {
+                int count = 1 + (int) (missingPercent * 6);
+                level.sendParticles(MOB_RAGE_RED,
+                        mob.getX(), mob.getY() + mob.getBbHeight() * 0.7, mob.getZ(),
+                        count, 0.25, 0.3, 0.25, 0.01);
+            }
+            if (missingPercent > 0.6f && mob.tickCount % 4 == 0) {
+                level.sendParticles(ParticleTypes.FLAME,
+                        mob.getX(), mob.getY() + mob.getBbHeight() * 0.5, mob.getZ(),
+                        1, 0.2, 0.3, 0.2, 0.01);
+            }
+        }
+
+        // Radioactive: irradiate nearby entities when close to target
+        if (mob.hasEffect(EffectReg.RADIOACTIVE.get()) && ModList.get().isLoaded("alexscaves")) {
+            tickMobRadioactive(mob, target, level);
         }
     }
 
@@ -746,17 +800,92 @@ public class MobPowerManager {
     // =====================================================================
 
     /**
-     * Shrink: mob stays tiny by default (stealth). Grows to normal size when
-     * aggroed — the sudden pop to full size is the surprise attack.
+     * Shrink: mob stays tiny by default (stealth). Two approach strategies:
+     *
+     * 1) Normal (50% chance): grows to full size immediately when aggroed.
+     * 2) Stealth (50% chance): stays tiny and approaches at high speed,
+     *    only popping to full size within 2 blocks of target for a surprise hit.
+     *
+     * At 20% health: shrinks back down, retreats. After recovering above 40%,
+     * re-enters stealth approach mode for the next ambush.
      */
+    private static final String SHRINK_STEALTH_TAG = "compound_v_shrink_stealth";
+    private static final String SHRINK_RETREATING_TAG = "compound_v_shrink_retreating";
+    private static final double STEALTH_POP_RANGE = 2.0;
+
     private static void tickMobShrink(Mob mob, LivingEntity target, ServerLevel level) {
         if (mob.tickCount % 10 != 0) return;
 
         float currentScale = PehkuiHelper.getTargetScale(mob);
         boolean aggroed = target != null && target.isAlive();
+        float healthPercent = mob.getHealth() / mob.getMaxHealth();
+        boolean retreating = mob.getPersistentData().getBoolean(SHRINK_RETREATING_TAG);
 
+        // === Low health retreat ===
+        if (healthPercent <= 0.2f) {
+            if (!retreating) {
+                // Initial retreat — shrink, flee, mark retreating
+                mob.getPersistentData().putBoolean(SHRINK_RETREATING_TAG, true);
+                if (currentScale > MOB_SHRINK_SCALE + 0.1f) {
+                    PehkuiHelper.setScale(mob, MOB_SHRINK_SCALE);
+                    level.sendParticles(ParticleTypes.POOF,
+                            mob.getX(), mob.getY() + 0.5, mob.getZ(),
+                            8, 0.3, 0.3, 0.3, 0.04);
+                    level.playSound(null, mob.getX(), mob.getY(), mob.getZ(),
+                            SoundEvents.PISTON_CONTRACT, SoundSource.HOSTILE, 0.4F, 1.8F);
+                }
+                if (target != null) {
+                    Vec3 fleeDir = mob.position().subtract(target.position()).normalize();
+                    mob.setDeltaMovement(fleeDir.x * 0.6, 0.3, fleeDir.z * 0.6);
+                    mob.hurtMarked = true;
+                }
+            }
+            mob.setTarget(null);
+            return;
+        }
+
+        // === Recovery from retreat: above 40% health, re-enter stealth mode ===
+        if (retreating && healthPercent > 0.4f) {
+            mob.getPersistentData().putBoolean(SHRINK_RETREATING_TAG, false);
+            mob.getPersistentData().putBoolean(SHRINK_STEALTH_TAG, true); // always stealth on re-ambush
+        }
+
+        // === Continue retreating until recovered ===
+        if (retreating) {
+            mob.setTarget(null);
+            return;
+        }
+
+        // === Roll stealth mode on first aggro if not already set ===
+        if (aggroed && !mob.getPersistentData().contains(SHRINK_STEALTH_TAG)) {
+            mob.getPersistentData().putBoolean(SHRINK_STEALTH_TAG, mob.getRandom().nextBoolean());
+        }
+
+        boolean stealthMode = mob.getPersistentData().getBoolean(SHRINK_STEALTH_TAG);
+
+        // === Stealth approach: stay small until within range ===
+        if (aggroed && stealthMode && currentScale < 0.9f) {
+            double dist = mob.distanceTo(target);
+            if (dist <= STEALTH_POP_RANGE) {
+                // Close enough — pop to full size for the ambush!
+                PehkuiHelper.resetScale(mob);
+                mob.getPersistentData().putBoolean(SHRINK_STEALTH_TAG, false);
+
+                level.sendParticles(ParticleTypes.POOF,
+                        mob.getX(), mob.getY() + 0.3, mob.getZ(),
+                        12, 0.4, 0.3, 0.4, 0.05);
+                level.sendParticles(POWER_SPARKLE,
+                        mob.getX(), mob.getY() + 0.5, mob.getZ(),
+                        6, 0.3, 0.3, 0.3, 0.02);
+                level.playSound(null, mob.getX(), mob.getY(), mob.getZ(),
+                        SoundEvents.PISTON_EXTEND, SoundSource.HOSTILE, 0.5F, 1.2F);
+            }
+            // Otherwise stay small — the speed boost makes them zip toward the target
+            return;
+        }
+
+        // === Normal approach: grow immediately when aggroed ===
         if (aggroed && currentScale < 0.9f) {
-            // Pop to full size — surprise!
             PehkuiHelper.resetScale(mob);
             level.sendParticles(ParticleTypes.POOF,
                     mob.getX(), mob.getY() + 0.3, mob.getZ(),
@@ -769,9 +898,61 @@ public class MobPowerManager {
         } else if (!aggroed && currentScale > MOB_SHRINK_SCALE + 0.1f) {
             // Shrink back down when calm
             PehkuiHelper.setScale(mob, MOB_SHRINK_SCALE);
+            // Reset stealth tag so next aggro re-rolls
+            mob.getPersistentData().remove(SHRINK_STEALTH_TAG);
             level.sendParticles(ParticleTypes.POOF,
                     mob.getX(), mob.getY() + 0.3, mob.getZ(),
                     5, 0.2, 0.2, 0.2, 0.02);
+        }
+    }
+
+    // =====================================================================
+    //  MOB RADIOACTIVE
+    // =====================================================================
+
+    private static final double MOB_RAD_OUTER_RANGE = 6.0;
+    private static final double MOB_RAD_MID_RANGE = 4.0;
+    private static final double MOB_RAD_INNER_RANGE = 2.0;
+    private static final int MOB_RAD_DURATION = 300; // 15 seconds
+    private static final double MOB_RAD_ACTIVATE_RANGE = 8.0; // only irradiate when target is this close
+
+    /**
+     * Mob radioactive aura. The mob always has Irradiated I for the green glow
+     * (applied on spawn). When aggroed and the target is within 8 blocks, the
+     * mob irradiates nearby entities with escalating levels based on proximity.
+     */
+    private static void tickMobRadioactive(Mob mob, LivingEntity target, ServerLevel level) {
+        if (mob.tickCount % 20 != 0) return; // once per second
+
+        net.minecraft.world.effect.MobEffect irradiated = blueduck.compound_v.effect.RadioactiveEffect.getIrradiatedEffect();
+        if (irradiated == null) return;
+
+        // Re-apply Irradiated I to self if it wore off (shouldn't happen with infinite, but safety)
+        if (!mob.hasEffect(irradiated)) {
+            mob.addEffect(new MobEffectInstance(irradiated, MobEffectInstance.INFINITE_DURATION, 0, false, false, false));
+        }
+
+        // Only activate damaging aura when target is close enough
+        if (target == null || !target.isAlive() || mob.distanceTo(target) > MOB_RAD_ACTIVATE_RANGE) return;
+
+        AABB auraBox = mob.getBoundingBox().inflate(MOB_RAD_OUTER_RANGE);
+        for (net.minecraft.world.entity.Entity e : level.getEntities(mob, auraBox,
+                ent -> ent instanceof LivingEntity && ent.isAlive() && ent != mob)) {
+            LivingEntity victim = (LivingEntity) e;
+            double dist = victim.distanceTo(mob);
+
+            int irradiatedLevel;
+            if (dist <= MOB_RAD_INNER_RANGE) {
+                irradiatedLevel = 2; // Irradiated III — real damage
+            } else if (dist <= MOB_RAD_MID_RANGE) {
+                irradiatedLevel = 1; // Irradiated II — slow damage
+            } else if (dist <= MOB_RAD_OUTER_RANGE) {
+                irradiatedLevel = 0; // Irradiated I — regen suppression
+            } else {
+                continue;
+            }
+
+            victim.addEffect(new MobEffectInstance(irradiated, MOB_RAD_DURATION, irradiatedLevel, false, false, true));
         }
     }
 

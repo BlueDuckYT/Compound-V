@@ -49,6 +49,8 @@ public class LaserBeamRenderer {
             { 0.92f, 0.8f, 1.0f,   0.6f, 0.15f, 1.0f,  0.4f, 0.05f, 0.85f },
             // 5 = Yellow (Husk, rare)
             { 1.0f, 1.0f, 0.85f,   1.0f, 0.9f, 0.15f,  0.9f, 0.75f, 0.02f },
+            // 6 = Chest Blast (Soldier Boy — wide gold beam)
+            { 1.0f, 0.95f, 0.7f,   1.0f, 0.75f, 0.15f,  1.0f, 0.5f, 0.05f },
     };
 
     @SubscribeEvent
@@ -98,6 +100,24 @@ public class LaserBeamRenderer {
             Matrix4f matrix = poseStack.last().pose();
 
             if (living instanceof Player player) {
+                // --- Chest Blast: wide single beam from chest ---
+                if (info.colorIndex == S2CLaserSyncPacket.COLOR_CHEST_BLAST) {
+                    Vec3 chestPos = player.getPosition(partialTick).add(0, player.getBbHeight() * 0.6, 0);
+                    Vec3 lookDir = player.getViewVector(partialTick);
+
+                    // Push origin slightly forward so beam doesn't clip into body
+                    Vec3 beamStart = chestPos.add(lookDir.scale(0.5));
+
+                    // Wide beam — 3 layers, progressively larger
+                    float blastCore = 0.15f;
+                    float blastGlow = 0.4f;
+                    float blastOuter = 0.7f;
+
+                    renderBeaconBeam(consumer, matrix, beamStart, hitPos, wr, wg, wb, 0.9f * flicker, blastCore);
+                    renderBeaconBeam(consumer, matrix, beamStart, hitPos, cr, cg, cb, 0.5f * flicker, blastGlow);
+                    renderBeaconBeam(consumer, matrix, beamStart, hitPos, gr, gg, gb, 0.15f * glowFlicker, blastOuter);
+
+                } else {
                 // --- Player: dual-eye beams using view yaw ---
                 Vec3 eyeCenter = player.getEyePosition(partialTick);
                 Vec3 lookDir = player.getViewVector(partialTick);
@@ -120,6 +140,7 @@ public class LaserBeamRenderer {
                 renderDualBeam(consumer, matrix, leftEye, rightEye, hitPos,
                         wr, wg, wb, cr, cg, cb, gr, gg, gb, flicker, glowFlicker,
                         CORE_HALF, GLOW_HALF, OUTER_HALF);
+                }
             } else {
                 // --- Mob: dual-eye beams using head yaw ---
                 float headYaw = Mth.lerp(partialTick, living.yHeadRotO, living.yHeadRot);

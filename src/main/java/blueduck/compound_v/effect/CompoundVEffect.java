@@ -24,6 +24,36 @@ public class CompoundVEffect extends MobEffect {
     }
 
     /**
+     * Damage reduction multiplier. Lower = more tanky. Default uses config value.
+     * Scales with amplifier: higher levels = tankier.
+     * Subclasses can override for custom scaling.
+     */
+    public double getDamageReduction(int amplifier) {
+        int level = amplifier + 1;
+        return blueduck.compound_v.Config.damageReduction / level;
+    }
+
+    /**
+     * Strength multiplier when dealing damage. Higher = more damage. Default uses config value.
+     * Scales with amplifier: higher levels = stronger.
+     * Subclasses can override for custom scaling.
+     */
+    public double getStrengthMultiplier(int amplifier) {
+        int level = amplifier + 1;
+        return blueduck.compound_v.Config.strengthMultiplier * level;
+    }
+
+    /**
+     * Knockback reduction multiplier. Lower = less knockback taken. Default uses config value.
+     * Scales with amplifier: higher levels = less knockback.
+     * Subclasses can override for custom scaling.
+     */
+    public double getKnockbackReduction(int amplifier) {
+        int level = amplifier + 1;
+        return blueduck.compound_v.Config.knockbackReduction / level;
+    }
+
+    /**
      * Called when the player presses the power key (single press toggle).
      */
     public void activate(ServerPlayer player, int amplifier, ServerLevel level) {

@@ -23,4 +23,13 @@ public class CompoundVEffectGiver {
         effect.setCurativeItems(new ArrayList<ItemStack>());
         entity.addEffect(effect);
     }
+
+    /**
+     * Apply at maximum amplifier level. Used by V1 (original formula).
+     */
+    public void applyMaxLevel(LivingEntity entity) {
+        MobEffectInstance effect = new MobEffectInstance(mobEffect, MobEffectInstance.INFINITE_DURATION, levels, false, false, false);
+        effect.setCurativeItems(new ArrayList<ItemStack>());
+        entity.addEffect(effect);
+    }
 }

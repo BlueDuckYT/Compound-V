@@ -1,25 +1,46 @@
 package blueduck.compound_v.effect;
 
 import blueduck.compound_v.util.PehkuiHelper;
+import net.minecraft.core.particles.BlockParticleOption;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.effect.MobEffectCategory;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.AttributeMap;
 import net.minecraft.world.entity.ai.attributes.AttributeModifier;
 import net.minecraft.world.entity.ai.attributes.Attributes;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 import net.minecraftforge.fml.ModList;
 
 import java.util.UUID;
 
+/**
+ * Enlarge power: grow to 3x size with bonus damage, damage reduction,
+ * and trampling of smaller entities.
+ *
+ * Trampling: while enlarged and moving, entities whose bounding box height
+ * is less than half of the enlarged entity's are knocked aside and take
+ * moderate damage. Uses Pehkui-aware bounding box heights.
+ *
+ * Damage reduction: enlarged entities take 40% less damage (stacks with
+ * general Compound V reduction for players). Handled in ForgeEvents.
+ */
 public class EnlargeEffect extends CompoundVEffect {
 
     private static final UUID ENLARGE_DAMAGE_UUID = UUID.fromString("d5e78c9a-1b3f-4a7e-9c2d-8f6b5a4e3d21");
-    private static final float ENLARGE_SCALE = 3.0f;
+    private static final UUID ENLARGE_BLOCK_REACH_UUID = UUID.fromString("d5e78c9a-1b3f-4a7e-9c2d-8f6b5a4e3d22");
+    private static final UUID ENLARGE_ENTITY_REACH_UUID = UUID.fromString("d5e78c9a-1b3f-4a7e-9c2d-8f6b5a4e3d23");
+    public static final float ENLARGE_SCALE = 3.0f;
+    public static final float ENLARGE_DAMAGE_REDUCTION = 0.6f; // take 60% damage = 40% reduction
+
+    private static final float TRAMPLE_DAMAGE = 5.0f;
 
     public EnlargeEffect(MobEffectCategory category) {
         super(category);
@@ -29,17 +50,25 @@ public class EnlargeEffect extends CompoundVEffect {
         return ModList.get().isLoaded("pehkui");
     }
 
+    /**
+     * Checks if an entity is currently enlarged (scale > 1.5).
+     */
+    public static boolean isEnlarged(LivingEntity entity) {
+        if (!isPehkuiLoaded()) return false;
+        return PehkuiHelper.getTargetScale(entity) > 1.5f;
+    }
+
     @Override
     public void activate(ServerPlayer player, int amplifier, ServerLevel level) {
         super.activate(player, amplifier, level);
         if (!isPehkuiLoaded()) return;
 
         float currentScale = PehkuiHelper.getTargetScale(player);
-        boolean isEnlarged = currentScale > 1.5f;
+        boolean isCurrentlyEnlarged = currentScale > 1.5f;
 
-        if (isEnlarged) {
+        if (isCurrentlyEnlarged) {
             PehkuiHelper.resetScale(player);
-            removeDamageBoost(player);
+            removeBoosts(player);
 
             level.sendParticles(ParticleTypes.CLOUD,
                     player.getX(), player.getY() + 1.0, player.getZ(),
@@ -48,7 +77,7 @@ public class EnlargeEffect extends CompoundVEffect {
                     SoundEvents.PISTON_CONTRACT, SoundSource.PLAYERS, 0.6F, 1.2F);
         } else {
             PehkuiHelper.setScale(player, ENLARGE_SCALE);
-            applyDamageBoost(player);
+            applyBoosts(player);
 
             level.sendParticles(ParticleTypes.CLOUD,
                     player.getX(), player.getY() + 1.0, player.getZ(),
@@ -63,48 +92,118 @@ public class EnlargeEffect extends CompoundVEffect {
         }
     }
 
-    private void applyDamageBoost(ServerPlayer player) {
-        var attr = player.getAttribute(Attributes.ATTACK_DAMAGE);
-        if (attr != null && attr.getModifier(ENLARGE_DAMAGE_UUID) == null) {
-            attr.addTransientModifier(new AttributeModifier(
+    private static void applyBoosts(Player player) {
+        // Damage boost
+        var dmg = player.getAttribute(Attributes.ATTACK_DAMAGE);
+        if (dmg != null && dmg.getModifier(ENLARGE_DAMAGE_UUID) == null) {
+            dmg.addTransientModifier(new AttributeModifier(
                     ENLARGE_DAMAGE_UUID, "Enlarge damage boost", 4.0, AttributeModifier.Operation.ADDITION));
+        }
+        // Block reach boost (+3 blocks)
+        var blockReach = player.getAttribute(net.minecraftforge.common.ForgeMod.BLOCK_REACH.get());
+        if (blockReach != null && blockReach.getModifier(ENLARGE_BLOCK_REACH_UUID) == null) {
+            blockReach.addTransientModifier(new AttributeModifier(
+                    ENLARGE_BLOCK_REACH_UUID, "Enlarge block reach", 3.0, AttributeModifier.Operation.ADDITION));
+        }
+        // Entity reach boost (+3 blocks)
+        var entityReach = player.getAttribute(net.minecraftforge.common.ForgeMod.ENTITY_REACH.get());
+        if (entityReach != null && entityReach.getModifier(ENLARGE_ENTITY_REACH_UUID) == null) {
+            entityReach.addTransientModifier(new AttributeModifier(
+                    ENLARGE_ENTITY_REACH_UUID, "Enlarge entity reach", 3.0, AttributeModifier.Operation.ADDITION));
         }
     }
 
-    private void removeDamageBoost(ServerPlayer player) {
-        var attr = player.getAttribute(Attributes.ATTACK_DAMAGE);
-        if (attr != null) {
-            attr.removeModifier(ENLARGE_DAMAGE_UUID);
-        }
+    private static void removeBoosts(Player player) {
+        var dmg = player.getAttribute(Attributes.ATTACK_DAMAGE);
+        if (dmg != null) dmg.removeModifier(ENLARGE_DAMAGE_UUID);
+        var blockReach = player.getAttribute(net.minecraftforge.common.ForgeMod.BLOCK_REACH.get());
+        if (blockReach != null) blockReach.removeModifier(ENLARGE_BLOCK_REACH_UUID);
+        var entityReach = player.getAttribute(net.minecraftforge.common.ForgeMod.ENTITY_REACH.get());
+        if (entityReach != null) entityReach.removeModifier(ENLARGE_ENTITY_REACH_UUID);
     }
 
     @Override
     public void applyEffectTick(LivingEntity entity, int amplifier) {
         super.applyEffectTick(entity, amplifier);
-        if (isPehkuiLoaded() && entity instanceof ServerPlayer player
-                && entity.level() instanceof ServerLevel sl) {
-            float scale = PehkuiHelper.getTargetScale(player);
-            if (scale > 1.5f && player.onGround() && player.getDeltaMovement().horizontalDistance() > 0.05) {
-                sl.sendParticles(ParticleTypes.CAMPFIRE_COSY_SMOKE,
+        if (!isPehkuiLoaded()) return;
+        if (!(entity.level() instanceof ServerLevel sl)) return;
+
+        float scale = PehkuiHelper.getTargetScale(entity);
+        if (scale <= 1.5f) return; // Not enlarged
+
+        // Ensure boosts are applied (handles login, chunk reload)
+        if (entity instanceof Player player) {
+            applyBoosts(player);
+        }
+
+        // Ground dust while walking
+        if (entity instanceof ServerPlayer player) {
+            if (player.onGround() && player.getDeltaMovement().horizontalDistance() > 0.05
+                    && player.tickCount % 4 == 0) {
+                BlockState belowState = sl.getBlockState(player.blockPosition().below());
+                sl.sendParticles(new BlockParticleOption(ParticleTypes.BLOCK, belowState),
                         player.getX(), player.getY(), player.getZ(),
-                        1, 0.5, 0.1, 0.5, 0.005);
+                        2, 0.5, 0.1, 0.5, 0.01);
             }
+        }
+
+        // === Trampling: damage entities significantly smaller than us ===
+        if (entity.tickCount % 5 != 0) return; // every quarter second
+        double speed = entity.getDeltaMovement().horizontalDistance();
+        if (speed < 0.03) return; // must be moving
+
+        float myHeight = entity.getBbHeight(); // already Pehkui-scaled
+        AABB trampleBox = entity.getBoundingBox().inflate(0.3);
+
+        for (Entity e : sl.getEntities(entity, trampleBox,
+                ent -> ent instanceof LivingEntity && ent.isAlive() && ent != entity)) {
+            LivingEntity target = (LivingEntity) e;
+            float targetHeight = target.getBbHeight();
+
+            // Only trample entities whose height is less than half ours
+            if (targetHeight >= myHeight * 0.5f) continue;
+
+            // Don't trample players (PvP trampling would be annoying)
+            if (target instanceof Player && entity instanceof Player) continue;
+
+            // Cooldown check via invulnerableTime
+            if (target.invulnerableTime > 0) continue;
+
+            // Trample! Damage scales slightly with size ratio
+            float sizeRatio = myHeight / Math.max(targetHeight, 0.1f);
+            float damage = TRAMPLE_DAMAGE * Math.min(sizeRatio * 0.3f, 2.0f);
+
+            if (entity instanceof net.minecraft.world.entity.Mob mob) {
+                target.hurt(entity.damageSources().mobAttack(mob), damage);
+            } else if (entity instanceof Player player) {
+                target.hurt(entity.damageSources().playerAttack(player), damage);
+            }
+
+            // Knock them aside
+            Vec3 knockDir = target.position().subtract(entity.position()).normalize();
+            target.push(knockDir.x * 0.5, 0.2, knockDir.z * 0.5);
+            target.hurtMarked = true;
+
+            // Ground impact particles at trample point
+            sl.sendParticles(ParticleTypes.CRIT,
+                    target.getX(), target.getY() + 0.2, target.getZ(),
+                    4, 0.2, 0.1, 0.2, 0.05);
         }
     }
 
     @Override
     public boolean isDurationEffectTick(int tick, int amplifier) {
-        return tick % 10 == 0;
+        return true; // every tick for trampling checks
     }
 
     @Override
     public void removeAttributeModifiers(LivingEntity entity, AttributeMap attributeMap, int amplifier) {
         super.removeAttributeModifiers(entity, attributeMap, amplifier);
-        if (entity instanceof ServerPlayer player) {
+        if (entity instanceof Player player) {
             if (isPehkuiLoaded()) {
                 PehkuiHelper.resetScale(player);
             }
-            removeDamageBoost(player);
+            removeBoosts(player);
         }
     }
 }

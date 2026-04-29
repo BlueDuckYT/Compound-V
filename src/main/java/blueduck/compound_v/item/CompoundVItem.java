@@ -41,13 +41,23 @@ public class CompoundVItem extends Item {
     public ItemStack finishUsingItem(ItemStack p_41348_, Level p_41349_, LivingEntity p_41350_) {
         super.finishUsingItem(p_41348_, p_41349_, p_41350_);
 
-        boolean isBad = !permanent ? Config.tempVBadOutcomes ? p_41349_.getRandom().nextDouble() < Config.badOutcomeChance : false : p_41349_.getRandom().nextDouble() < Config.badOutcomeChance;
+        if (!p_41349_.isClientSide) {
+            if (permanent && hasTempCompV(p_41350_)) {
+                // Permanent V while having temp effect → upgrade to permanent
+                upgradeTempToPermanent(p_41350_);
+            } else if (!permanent && hasTempCompV(p_41350_)) {
+                // Another Temp V while already on Temp V → refresh duration
+                refreshTempDuration(p_41350_);
+            } else if (!hasCompVAlready(p_41350_)) {
+                boolean isBad = permanent
+                        ? p_41349_.getRandom().nextDouble() < Config.badOutcomeChance
+                        : p_41349_.getRandom().nextDouble() < Config.tempVBadOutcomeChance;
 
-        if (!p_41349_.isClientSide && !hasCompVAlready(p_41350_)) {
-            if (isBad) {
-                CompoundVEffectMatrix.FAILURE_MATRIX.get(p_41349_.getRandom().nextInt(CompoundVEffectMatrix.FAILURE_MATRIX.size())).apply(p_41350_, permanent);
-            } else {
-                CompoundVEffectMatrix.EFFECT_MATRIX.get(p_41349_.getRandom().nextInt(CompoundVEffectMatrix.EFFECT_MATRIX.size())).apply(p_41350_, permanent);
+                if (isBad) {
+                    CompoundVEffectMatrix.FAILURE_MATRIX.get(p_41349_.getRandom().nextInt(CompoundVEffectMatrix.FAILURE_MATRIX.size())).apply(p_41350_, permanent);
+                } else {
+                    CompoundVEffectMatrix.EFFECT_MATRIX.get(p_41349_.getRandom().nextInt(CompoundVEffectMatrix.EFFECT_MATRIX.size())).apply(p_41350_, permanent);
+                }
             }
         }
 
@@ -56,6 +66,61 @@ public class CompoundVItem extends Item {
         }
 
         return ItemStack.EMPTY;
+    }
+
+    /**
+     * Checks if the entity has any temp (non-infinite) CompoundVEffect (including bad outcomes).
+     */
+    private boolean hasTempCompV(LivingEntity entity) {
+        for (MobEffectInstance inst : entity.getActiveEffects()) {
+            if (inst.getEffect() instanceof CompoundVEffect
+                    && !inst.isInfiniteDuration()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Upgrades all temp CompoundV effects to permanent (infinite duration),
+     * keeping the same effect and amplifier. Includes bad effects.
+     */
+    private void upgradeTempToPermanent(LivingEntity entity) {
+        java.util.List<MobEffectInstance> toUpgrade = new java.util.ArrayList<>();
+        for (MobEffectInstance inst : entity.getActiveEffects()) {
+            if (inst.getEffect() instanceof CompoundVEffect
+                    && !inst.isInfiniteDuration()) {
+                toUpgrade.add(inst);
+            }
+        }
+        for (MobEffectInstance old : toUpgrade) {
+            entity.removeEffect(old.getEffect());
+            MobEffectInstance upgraded = new MobEffectInstance(old.getEffect(),
+                    MobEffectInstance.INFINITE_DURATION, old.getAmplifier(), false, false, false);
+            upgraded.setCurativeItems(new java.util.ArrayList<>());
+            entity.addEffect(upgraded);
+        }
+    }
+
+    /**
+     * Refreshes all temp CompoundV effects back to full duration.
+     * Same effect, same amplifier, just resets the timer.
+     */
+    private void refreshTempDuration(LivingEntity entity) {
+        java.util.List<MobEffectInstance> toRefresh = new java.util.ArrayList<>();
+        for (MobEffectInstance inst : entity.getActiveEffects()) {
+            if (inst.getEffect() instanceof CompoundVEffect
+                    && !inst.isInfiniteDuration()) {
+                toRefresh.add(inst);
+            }
+        }
+        for (MobEffectInstance old : toRefresh) {
+            entity.removeEffect(old.getEffect());
+            MobEffectInstance refreshed = new MobEffectInstance(old.getEffect(),
+                    Config.tempVDuration, old.getAmplifier(), false, false, false);
+            refreshed.setCurativeItems(new java.util.ArrayList<>());
+            entity.addEffect(refreshed);
+        }
     }
 
     public boolean hasCompVAlready(LivingEntity entity) {

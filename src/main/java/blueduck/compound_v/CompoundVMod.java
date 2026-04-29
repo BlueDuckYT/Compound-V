@@ -58,6 +58,8 @@ public class CompoundVMod {
         if (event.getTabKey() == CreativeModeTabs.COMBAT) {
             event.accept(ItemReg.COMPOUND_V.get());
             event.accept(ItemReg.TEMP_V.get());
+            event.accept(ItemReg.V1.get());
+            event.accept(ItemReg.ANTI_V.get());
         }
     }
 
@@ -87,6 +89,7 @@ public class CompoundVMod {
                 var renderer = event.getSkin(skin);
                 if (renderer instanceof PlayerRenderer playerRenderer) {
                     playerRenderer.addLayer(new DensityRenderLayer(playerRenderer));
+                    playerRenderer.addLayer(new blueduck.compound_v.client.StarPowerRenderLayer(playerRenderer));
                 }
             }
         }

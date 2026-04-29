@@ -1,6 +1,8 @@
 {
   "item.compound_v.compound_v": "Compound V",
   "item.compound_v.temp_v": "Temp V",
+  "item.compound_v.v1": "V1",
+  "item.compound_v.anti_v": "Anti-V",
 
   "effect.compound_v.generic": "Compound V",
   "effect.compound_v.deep": "Compound V",
@@ -22,12 +24,22 @@
   "effect.compound_v.enhanced_regen": "Compound V",
   "effect.compound_v.density": "Compound V",
   "effect.compound_v.spider": "Compound V",
+  "effect.compound_v.instakill": "Compound V",
+  "effect.compound_v.mind_control": "Compound V",
+  "effect.compound_v.berserker": "Compound V",
+  "effect.compound_v.projectile_immunity": "Compound V",
+  "effect.compound_v.radioactive": "Compound V",
+  "effect.compound_v.star_power": "Compound V",
+  "effect.compound_v.chest_blast": "Compound V",
 
   "effect.compound_v.charging": "Charging",
 
   "effect.compound_v.slowness": "Compound V",
   "effect.compound_v.floating": "Compound V",
   "effect.compound_v.uncontrolled_teleport": "Compound V",
+  "effect.compound_v.blindness": "Compound V",
+  "effect.compound_v.magnetism": "Compound V",
+  "effect.compound_v.radioactive_decay": "Compound V",
 
   "key.category.compound_v.compound_v": "Compound V",
   "key.category.compound_v.activate_power": "Activate Power"

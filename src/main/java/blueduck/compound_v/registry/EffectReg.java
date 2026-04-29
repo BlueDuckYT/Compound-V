@@ -3,7 +3,10 @@ package blueduck.compound_v.registry;
 import blueduck.compound_v.CompoundVMod;
 import blueduck.compound_v.Config;
 import blueduck.compound_v.effect.*;
+import blueduck.compound_v.effect.negative.BlindnessEffect;
 import blueduck.compound_v.effect.negative.FloatingEffect;
+import blueduck.compound_v.effect.negative.MagnetismEffect;
+import blueduck.compound_v.effect.negative.RadioactiveDecayEffect;
 import blueduck.compound_v.effect.negative.SlowEffect;
 import blueduck.compound_v.effect.negative.UncontrolledTeleportEffect;
 import blueduck.compound_v.util.CompoundVEffectGiver;
@@ -42,15 +45,25 @@ public class EffectReg {
     public static final RegistryObject<MobEffect> ENHANCED_REGEN = EFFECTS.register("enhanced_regen", () -> new EnhancedRegenEffect(MobEffectCategory.BENEFICIAL));
     public static final RegistryObject<MobEffect> DENSITY = EFFECTS.register("density", () -> new DensityEffect(MobEffectCategory.BENEFICIAL));
     public static final RegistryObject<MobEffect> SPIDER = EFFECTS.register("spider", () -> new SpiderEffect(MobEffectCategory.BENEFICIAL));
+    public static final RegistryObject<MobEffect> INSTAKILL = EFFECTS.register("instakill", () -> new InstakillEffect(MobEffectCategory.BENEFICIAL));
+    public static final RegistryObject<MobEffect> MIND_CONTROL = EFFECTS.register("mind_control", () -> new MindControlEffect(MobEffectCategory.BENEFICIAL));
+    public static final RegistryObject<MobEffect> BERSERKER = EFFECTS.register("berserker", () -> new BerserkerEffect(MobEffectCategory.BENEFICIAL));
+    public static final RegistryObject<MobEffect> PROJECTILE_IMMUNITY = EFFECTS.register("projectile_immunity", () -> new ProjectileImmunityEffect(MobEffectCategory.BENEFICIAL));
+    public static final RegistryObject<MobEffect> RADIOACTIVE = EFFECTS.register("radioactive", () -> new RadioactiveEffect(MobEffectCategory.BENEFICIAL));
+    public static final RegistryObject<MobEffect> STAR_POWER = EFFECTS.register("star_power", () -> new StarPowerEffect(MobEffectCategory.BENEFICIAL));
+    public static final RegistryObject<MobEffect> CHEST_BLAST = EFFECTS.register("chest_blast", () -> new ChestBlastEffect(MobEffectCategory.BENEFICIAL));
 
     // Negative effects
     public static final RegistryObject<MobEffect> SLOWNESS = EFFECTS.register("slowness", () -> new SlowEffect(MobEffectCategory.HARMFUL));
     public static final RegistryObject<MobEffect> FLOATING = EFFECTS.register("floating", () -> new FloatingEffect(MobEffectCategory.HARMFUL));
     public static final RegistryObject<MobEffect> UNCONTROLLED_TELEPORT = EFFECTS.register("uncontrolled_teleport", () -> new UncontrolledTeleportEffect(MobEffectCategory.HARMFUL));
+    public static final RegistryObject<MobEffect> BLINDNESS = EFFECTS.register("blindness", () -> new BlindnessEffect(MobEffectCategory.HARMFUL));
+    public static final RegistryObject<MobEffect> MAGNETISM = EFFECTS.register("magnetism", () -> new MagnetismEffect(MobEffectCategory.HARMFUL));
+    public static final RegistryObject<MobEffect> RADIOACTIVE_DECAY = EFFECTS.register("radioactive_decay", () -> new RadioactiveDecayEffect(MobEffectCategory.HARMFUL));
 
     public static void addEffectsToMatrix() {
         // Original effects
-        CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(GENERIC.get(), 1), Config.weightGeneric);
+        CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(GENERIC.get(), 3), Config.weightGeneric);
         CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(SPEEDSTER.get(), 5), Config.weightSpeedster);
         CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(DEEP.get(), 1), Config.weightWater);
         CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(TELEPORT.get(), 1), Config.weightTeleport);
@@ -71,6 +84,16 @@ public class EffectReg {
         CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(DENSITY.get(), 1), Config.weightDensity);
         // Spider power — in development, disabled for now
         // CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(SPIDER.get(), 1), Config.weightSpider);
+        CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(MIND_CONTROL.get(), 1), Config.weightMindControl);
+        CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(INSTAKILL.get(), 1), Config.weightInstakill);
+        CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(BERSERKER.get(), 1), Config.weightBerserker);
+        CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(PROJECTILE_IMMUNITY.get(), 1), Config.weightProjectileImmunity);
+        // Star Power — experimental
+         CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(STAR_POWER.get(), 1), Config.weightStarPower);
+        // Chest Blast — optionally in regular pool
+        if (Config.chestBlastInRegularPool && Config.weightChestBlast > 0) {
+            CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(CHEST_BLAST.get(), 1), Config.weightChestBlast);
+        }
 
         // Pehkui-dependent effects
         if (ModList.get().isLoaded("pehkui")) {
@@ -81,9 +104,69 @@ public class EffectReg {
             com.mojang.logging.LogUtils.getLogger().info("Compound V: Pehkui not found, Shrink and Enlarge powers disabled.");
         }
 
+        // Alex's Caves-dependent effects — disabled pending AC glow shader compatibility
+        // if (ModList.get().isLoaded("alexscaves")) {
+        //     CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(RADIOACTIVE.get(), 1), Config.weightRadioactive);
+        // }
+
         // Failure effects
         CompoundVEffectMatrix.addFailureEffect(new CompoundVEffectGiver(SLOWNESS.get(), 2), 5);
         CompoundVEffectMatrix.addFailureEffect(new CompoundVEffectGiver(FLOATING.get(), 1), 5);
         CompoundVEffectMatrix.addFailureEffect(new CompoundVEffectGiver(UNCONTROLLED_TELEPORT.get(), 1), 15);
+        CompoundVEffectMatrix.addFailureEffect(new CompoundVEffectGiver(BLINDNESS.get(), 1), 5);
+        CompoundVEffectMatrix.addFailureEffect(new CompoundVEffectGiver(MAGNETISM.get(), 1), 5);
+        // if (ModList.get().isLoaded("alexscaves")) {
+        //     CompoundVEffectMatrix.addFailureEffect(new CompoundVEffectGiver(RADIOACTIVE_DECAY.get(), 1), 5);
+        // }
+
+        // === Mob-injectable pools (right-click with Compound V / Temp V) ===
+        // Only powers that mechanically function on non-player entities.
+        // Excludes: Generic, Mind Control, Head Pop, Sonic Scream, Power Absorption,
+        //           Density, Creative Flight, Laser Eyes Advanced, Instakill, Spider
+        CompoundVEffectMatrix.addMobEffect(new CompoundVEffectGiver(SPEEDSTER.get(), 5), Config.weightSpeedster);
+        CompoundVEffectMatrix.addMobEffect(new CompoundVEffectGiver(DEEP.get(), 1), Config.weightWater);
+        CompoundVEffectMatrix.addMobEffect(new CompoundVEffectGiver(TELEPORT.get(), 1), Config.weightTeleport);
+        CompoundVEffectMatrix.addMobEffect(new CompoundVEffectGiver(ATOM_CHARGING.get(), 3), Config.weightAtomCharging);
+        CompoundVEffectMatrix.addMobEffect(new CompoundVEffectGiver(INVISIBILITY.get(), 1), Config.weightInvisibility);
+        //CompoundVEffectMatrix.addMobEffect(new CompoundVEffectGiver(STAR_POWER.get(), 1), Config.weightStarPower);
+//        CompoundVEffectMatrix.addMobEffect(new CompoundVEffectGiver(NIGHT_VISION.get(), 1), Config.weightNightVision);
+        CompoundVEffectMatrix.addMobEffect(new CompoundVEffectGiver(INVINCIBLE.get(), 1), Config.weightInvincible);
+        CompoundVEffectMatrix.addMobEffect(new CompoundVEffectGiver(LASER_EYES_BASIC.get(), 1), Config.weightLaserEyesBasic);
+        CompoundVEffectMatrix.addMobEffect(new CompoundVEffectGiver(ENHANCED_REGEN.get(), 1), Config.weightEnhancedRegen);
+        CompoundVEffectMatrix.addMobEffect(new CompoundVEffectGiver(BERSERKER.get(), 1), Config.weightBerserker);
+        CompoundVEffectMatrix.addMobEffect(new CompoundVEffectGiver(PROJECTILE_IMMUNITY.get(), 1), Config.weightProjectileImmunity);
+        if (ModList.get().isLoaded("pehkui")) {
+            CompoundVEffectMatrix.addMobEffect(new CompoundVEffectGiver(SHRINK.get(), 1), Config.weightShrink);
+            CompoundVEffectMatrix.addMobEffect(new CompoundVEffectGiver(ENLARGE.get(), 1), Config.weightEnlarge);
+        }
+
+        // Mob-injectable failure effects (excludes player-only: Magnetism, Radioactive Decay)
+        CompoundVEffectMatrix.addMobFailureEffect(new CompoundVEffectGiver(SLOWNESS.get(), 2), 5);
+        CompoundVEffectMatrix.addMobFailureEffect(new CompoundVEffectGiver(FLOATING.get(), 1), 5);
+        CompoundVEffectMatrix.addMobFailureEffect(new CompoundVEffectGiver(UNCONTROLLED_TELEPORT.get(), 1), 15);
+        CompoundVEffectMatrix.addMobFailureEffect(new CompoundVEffectGiver(MAGNETISM.get(), 1), 5);
+
+        // === V1 pool (original formula) — curated powerful effects at max level ===
+        CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(SPEEDSTER.get(), 5), 3);
+        CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(LASER_EYES_ADVANCED.get(), 1), 3);
+        CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(HEAD_POP.get(), 3), 3);
+        CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(CREATIVE_FLIGHT.get(), 1), 2);
+        CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(TELEPORT.get(), 1), 2);
+        if (Config.weightMindControl > 0) {
+            CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(MIND_CONTROL.get(), 1), 2);
+        }
+        if (ModList.get().isLoaded("pehkui")) {
+            CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(ENLARGE.get(), 1), 2);
+        }
+        CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(INSTAKILL.get(), 1), 1);
+        if (Config.weightInvincible > 0) {
+            CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(INVINCIBLE.get(), 1), 1);
+        }
+        if (Config.weightStarPower > 0) {
+            CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(STAR_POWER.get(), 1), 1);
+        }
+        if (Config.weightChestBlast > 0) {
+            CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(CHEST_BLAST.get(), 1), Config.weightChestBlast);
+        }
     }
 }

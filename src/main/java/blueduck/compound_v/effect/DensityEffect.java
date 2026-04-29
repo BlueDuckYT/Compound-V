@@ -79,13 +79,30 @@ public class DensityEffect extends CompoundVEffect {
         if (player.isInWater()) {
             Vec3 motion = player.getDeltaMovement();
 
-            double sinkRate = -0.15;
-            double maxSinkSpeed = -0.5;
-            double newY = Math.max(motion.y + sinkRate, maxSinkSpeed);
-
-            player.setDeltaMovement(motion.x * 0.85, newY, motion.z * 0.85);
-
+            // Prevent swimming entirely — you're too heavy
+            player.setSwimming(false);
             player.setSprinting(false);
+
+            // Strong downward pull that overwhelms jump/swim input
+            double sinkRate = -0.08;
+            double maxSinkSpeed = -0.6;
+            double newY = motion.y - sinkRate;
+            // Cancel any upward movement from swimming/jumping in water
+            if (newY > 0) {
+                newY = -0.04;
+            }
+            newY = Math.max(newY, maxSinkSpeed);
+
+            // Heavily dampen horizontal movement — walking on the bottom, not swimming
+            player.setDeltaMovement(motion.x * 0.7, newY, motion.z * 0.7);
+            player.hurtMarked = true;
+
+            // Bubble particles as you sink
+            if (player.tickCount % 5 == 0) {
+                level.sendParticles(ParticleTypes.BUBBLE,
+                        player.getX(), player.getY() + player.getBbHeight(), player.getZ(),
+                        3, 0.2, 0.1, 0.2, 0.02);
+            }
         }
         else {
             Vec3 motion = player.getDeltaMovement();
@@ -190,5 +207,10 @@ public class DensityEffect extends CompoundVEffect {
             fallStartY.remove(uuid);
             player.removeEffect(MobEffects.MOVEMENT_SLOWDOWN);
         }
+    }
+
+    @Override
+    public double getStrengthMultiplier(int amplifier) {
+        return super.getStrengthMultiplier(amplifier) * 1.5; // 50% more damage — heavy hitter
     }
 }

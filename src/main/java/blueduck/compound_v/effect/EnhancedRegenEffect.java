@@ -32,6 +32,7 @@ public class EnhancedRegenEffect extends CompoundVEffect {
         super(category);
     }
 
+
     public static void onPlayerDamaged(UUID playerUUID, long gameTime) {
         lastDamageTick.put(playerUUID, gameTime);
     }
@@ -39,6 +40,7 @@ public class EnhancedRegenEffect extends CompoundVEffect {
     @Override
     public void applyEffectTick(LivingEntity entity, int amplifier) {
         super.applyEffectTick(entity, amplifier);
+        if (CompoundVEffect.arePowersSuppressed(entity)) return;
         if (!(entity instanceof ServerPlayer player)) return;
         ServerLevel level = player.serverLevel();
         UUID uuid = player.getUUID();

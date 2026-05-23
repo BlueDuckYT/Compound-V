@@ -42,6 +42,12 @@ public class ShrinkEffect extends CompoundVEffect {
         super(category);
     }
 
+
+    @Override
+    public PowerType getPowerType() {
+        return PowerType.ACTIVE;
+    }
+
     public static boolean isPehkuiLoaded() {
         return ModList.get().isLoaded("pehkui");
     }

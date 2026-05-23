@@ -21,6 +21,9 @@ import java.util.List;
 
 public class SpeedsterEffect extends CompoundVEffect {
 
+    public static final java.util.UUID STEP_HEIGHT_UUID =
+            java.util.UUID.fromString("a3c7e1b9-4d5f-4e2a-8b1c-9f3d2e6a7c86");
+
     private static final DustParticleOptions BLUE_LIGHTNING = new DustParticleOptions(
             new Vector3f(0.2f, 0.6f, 1.0f), 1.0f);
     private static final DustParticleOptions BRIGHT_BLUE = new DustParticleOptions(
@@ -38,13 +41,38 @@ public class SpeedsterEffect extends CompoundVEffect {
         super(category);
     }
 
+
+    @Override
+    public PowerType getPowerType() {
+        return PowerType.ACTIVE;
+    }
+
+    // Speedster has no passive melee strength bonus — damage comes from sprint attacks instead
+    @Override
+    public double getStrengthMultiplier(int amplifier) {
+        return 1.0;
+    }
+
     public void applyEffectTick(LivingEntity entity, int amplifier) {
         super.applyEffectTick(entity, amplifier);
+        if (CompoundVEffect.arePowersSuppressed(entity)) return;
 
         boolean hasSpeedEffects = entity.hasEffect(MobEffects.MOVEMENT_SPEED) && entity.hasEffect(MobEffects.DIG_SPEED);
         if (hasSpeedEffects || !(entity instanceof Player)) {
-            entity.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SPEED, 200, amplifier * 2));
-            entity.addEffect(new MobEffectInstance(MobEffects.DIG_SPEED, 200, amplifier));
+            // Speed levels: amp 0 = Speed III, amp 1 = Speed V, amp 2 = Speed VII, amp 3 = Speed IX
+            // Much faster than before — Speedster should FEEL fast
+            entity.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SPEED, 200, 2 + amplifier * 2));
+            entity.addEffect(new MobEffectInstance(MobEffects.DIG_SPEED, 200, 1 + amplifier));
+
+            // Step height boost — walk up 1 block without jumping
+            if (entity instanceof Player player) {
+                var stepAttr = player.getAttribute(net.minecraftforge.common.ForgeMod.STEP_HEIGHT_ADDITION.get());
+                if (stepAttr != null && stepAttr.getModifier(STEP_HEIGHT_UUID) == null) {
+                    stepAttr.addTransientModifier(new net.minecraft.world.entity.ai.attributes.AttributeModifier(
+                            STEP_HEIGHT_UUID, "Speedster Step Height", 0.6,
+                            net.minecraft.world.entity.ai.attributes.AttributeModifier.Operation.ADDITION));
+                }
+            }
 
             // Blue lightning particles when moving
             if (entity.level() instanceof ServerLevel serverLevel && entity instanceof Player) {
@@ -81,6 +109,10 @@ public class SpeedsterEffect extends CompoundVEffect {
                             // Increased damage: base 2 + 1.5 per amplifier level above 1
                             // At level 5 (amplifier=4): 2 + 1.5*3 = 6.5 per hit, hits every tick while sprinting
                             float damage = 2.0f + 1.5f * (amplifier - 1);
+                            // Halve damage against players
+                            if (livingentity instanceof Player) {
+                                damage *= 0.5f;
+                            }
                             float healthBefore = livingentity.getHealth();
 
                             livingentity.invulnerableTime = 0;
@@ -158,6 +190,18 @@ public class SpeedsterEffect extends CompoundVEffect {
             return p_19455_ % k == 0;
         } else {
             return true;
+        }
+    }
+
+    @Override
+    public void removeAttributeModifiers(LivingEntity entity,
+                                          net.minecraft.world.entity.ai.attributes.AttributeMap attributeMap, int amplifier) {
+        super.removeAttributeModifiers(entity, attributeMap, amplifier);
+        if (entity instanceof Player player) {
+            var stepAttr = player.getAttribute(net.minecraftforge.common.ForgeMod.STEP_HEIGHT_ADDITION.get());
+            if (stepAttr != null) {
+                stepAttr.removeModifier(STEP_HEIGHT_UUID);
+            }
         }
     }
 }

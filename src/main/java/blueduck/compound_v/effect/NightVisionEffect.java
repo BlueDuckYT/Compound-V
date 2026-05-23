@@ -16,8 +16,15 @@ public class NightVisionEffect extends CompoundVEffect {
         super(category);
     }
 
+
+    @Override
+    public PowerType getPowerType() {
+        return PowerType.ACTIVE;
+    }
+
     public void applyEffectTick(LivingEntity entity, int amplifier) {
         super.applyEffectTick(entity, amplifier);
+        if (CompoundVEffect.arePowersSuppressed(entity)) return;
         entity.addEffect(new MobEffectInstance(MobEffects.NIGHT_VISION, 400, 0, false, false, false));
     }
 

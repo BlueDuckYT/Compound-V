@@ -58,6 +58,12 @@ public class LaserEyesEffect extends CompoundVEffect {
         super(category);
     }
 
+
+    @Override
+    public PowerType getPowerType() {
+        return PowerType.ACTIVE;
+    }
+
     protected float getLaserDamage() {
         return (float) Config.laserBasicDamage;
     }

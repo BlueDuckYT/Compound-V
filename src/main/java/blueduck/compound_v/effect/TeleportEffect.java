@@ -23,8 +23,15 @@ public class TeleportEffect extends CompoundVEffect {
         super(category);
     }
 
+
+    @Override
+    public PowerType getPowerType() {
+        return PowerType.ACTIVE;
+    }
+
     public void applyEffectTick(LivingEntity entity, int amplifier) {
         super.applyEffectTick(entity, amplifier);
+        if (CompoundVEffect.arePowersSuppressed(entity)) return;
     }
 
     public void activate(ServerPlayer player, int amplifier, ServerLevel level) {

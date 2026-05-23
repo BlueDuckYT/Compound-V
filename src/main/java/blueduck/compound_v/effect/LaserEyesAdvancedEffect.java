@@ -28,6 +28,12 @@ public class LaserEyesAdvancedEffect extends LaserEyesEffect {
         super(category);
     }
 
+
+    @Override
+    public PowerType getPowerType() {
+        return PowerType.ACTIVE;
+    }
+
     @Override
     protected boolean isAdvanced() {
         return true;
@@ -76,6 +82,7 @@ public class LaserEyesAdvancedEffect extends LaserEyesEffect {
     @Override
     public void applyEffectTick(LivingEntity entity, int amplifier) {
         super.applyEffectTick(entity, amplifier);
+        if (CompoundVEffect.arePowersSuppressed(entity)) return;
 
         // Keep flight always available
         if (entity instanceof ServerPlayer player) {

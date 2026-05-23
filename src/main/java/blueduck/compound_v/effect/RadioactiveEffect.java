@@ -54,6 +54,11 @@ public class RadioactiveEffect extends CompoundVEffect {
         super(category);
     }
 
+    @Override
+    public PowerType getPowerType() {
+        return PowerType.ACTIVE;
+    }
+
     public static boolean isAuraActive(UUID uuid) {
         return activeAuras.contains(uuid);
     }
@@ -83,7 +88,7 @@ public class RadioactiveEffect extends CompoundVEffect {
 
         if (getIrradiatedEffect() == null) {
             player.displayClientMessage(
-                    net.minecraft.network.chat.Component.literal("Radioactive power requires Alex's Caves!"),
+                    net.minecraft.network.chat.Component.literal("§7Radioactive requires Alex's Caves"),
                     true);
             return;
         }

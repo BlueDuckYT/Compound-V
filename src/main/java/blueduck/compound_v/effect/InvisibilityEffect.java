@@ -13,8 +13,15 @@ public class InvisibilityEffect extends CompoundVEffect {
         super(category);
     }
 
+
+    @Override
+    public PowerType getPowerType() {
+        return PowerType.ACTIVE;
+    }
+
     public void applyEffectTick(LivingEntity entity, int amplifier) {
         super.applyEffectTick(entity, amplifier);
+        if (CompoundVEffect.arePowersSuppressed(entity)) return;
         if (entity.hasEffect(MobEffects.INVISIBILITY) || !(entity instanceof Player)) {
             entity.addEffect(new MobEffectInstance(MobEffects.INVISIBILITY, 200, 0, false, false, false));
         }

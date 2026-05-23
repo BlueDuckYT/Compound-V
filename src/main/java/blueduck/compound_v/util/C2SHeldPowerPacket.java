@@ -27,12 +27,23 @@ public class C2SHeldPowerPacket {
         context.enqueueWork(() -> {
             ServerPlayer player = context.getSender();
             if (player == null) return;
+            if (player.getPersistentData().getBoolean("compound_v_petrified")) return; // frozen by gaze
+            if (CompoundVEffect.arePowersSuppressed(player)) return; // virus / nullification field
             ServerLevel level = player.serverLevel();
 
             // Iterate safely over a copy of active effects
             List<MobEffectInstance> effects = new ArrayList<>(player.getActiveEffects());
+
+            // Mimic routing: if player has Mimic + a copied power, skip Mimic
+            boolean hasMimic = player.hasEffect(blueduck.compound_v.registry.EffectReg.MIMIC.get());
+            MobEffectInstance copiedEffect = hasMimic
+                    ? blueduck.compound_v.effect.MimicEffect.getCopiedEffect(player) : null;
+
             for (MobEffectInstance instance : effects) {
                 if (instance.getEffect() instanceof CompoundVEffect compoundEffect) {
+                    if (hasMimic && copiedEffect != null) {
+                        if (compoundEffect instanceof blueduck.compound_v.effect.MimicEffect) continue;
+                    }
                     compoundEffect.holdActivate(player, instance.getAmplifier(), level);
                 }
             }

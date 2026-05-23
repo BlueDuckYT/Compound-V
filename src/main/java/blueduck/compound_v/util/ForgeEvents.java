@@ -5,11 +5,17 @@ import blueduck.compound_v.Config;
 import blueduck.compound_v.effect.BerserkerEffect;
 import blueduck.compound_v.effect.CompoundVEffect;
 import blueduck.compound_v.effect.DensityEffect;
+import blueduck.compound_v.effect.ForcefieldEffect;
 import blueduck.compound_v.effect.StarPowerEffect;
 import blueduck.compound_v.effect.EnhancedRegenEffect;
 import blueduck.compound_v.effect.PowerAbsorptionEffect;
 import blueduck.compound_v.registry.EffectReg;
 import blueduck.compound_v.registry.ItemReg;
+import net.minecraft.core.particles.ParticleTypes;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
+import net.minecraft.world.entity.monster.EnderMan;
+import blueduck.compound_v.util.S2CLaserSyncPacket;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -60,6 +66,9 @@ public class ForgeEvents {
                     Collection<MobEffectInstance> effects = effectMap.get(player);
                     if (effects != null && effects.size() > 0) {
                         for (MobEffectInstance effect : effects) {
+                            if (effect.getEffect() instanceof CompoundVEffect) {
+                                effect.setCurativeItems(new java.util.ArrayList<>());
+                            }
                             player.addEffect(effect);
                         }
                     }
@@ -92,9 +101,53 @@ public class ForgeEvents {
 
             if (player.hasEffect(EffectReg.CREATIVE_FLIGHT.get()) ||
                     player.hasEffect(EffectReg.LASER_EYES_ADVANCED.get())) {
-                if (!player.getAbilities().mayfly && !player.isCreative() && !player.isSpectator()) {
+                if (!CompoundVEffect.arePowersSuppressed(player)
+                        && !player.getAbilities().mayfly && !player.isCreative() && !player.isSpectator()) {
                     player.getAbilities().mayfly = true;
                     player.onUpdateAbilities();
+                }
+            }
+
+            // === Active suppression: strip passive buffs while powers are suppressed ===
+            if (CompoundVEffect.arePowersSuppressed(player)) {
+                boolean hasAnyCompV = false;
+                for (MobEffectInstance inst : player.getActiveEffects()) {
+                    if (inst.getEffect() instanceof CompoundVEffect) {
+                        hasAnyCompV = true;
+                        break;
+                    }
+                }
+                if (hasAnyCompV) {
+                    // Revoke flight (Creative Flight, Stormfront, Advanced Laser Eyes)
+                    if (player.getAbilities().mayfly && !player.isCreative() && !player.isSpectator()) {
+                        player.getAbilities().mayfly = false;
+                        player.getAbilities().flying = false;
+                        player.onUpdateAbilities();
+                    }
+                    // Strip vanilla effects granted by Compound V powers
+                    // Speedster: Speed, Haste, Step Height
+                    if (player.hasEffect(EffectReg.SPEEDSTER.get())) {
+                        player.removeEffect(net.minecraft.world.effect.MobEffects.MOVEMENT_SPEED);
+                        player.removeEffect(net.minecraft.world.effect.MobEffects.DIG_SPEED);
+                        var stepAttr = player.getAttribute(net.minecraftforge.common.ForgeMod.STEP_HEIGHT_ADDITION.get());
+                        if (stepAttr != null) {
+                            stepAttr.removeModifier(blueduck.compound_v.effect.SpeedsterEffect.STEP_HEIGHT_UUID);
+                        }
+                    }
+                    // NightVision: Night Vision
+                    if (player.hasEffect(EffectReg.NIGHT_VISION.get())) {
+                        player.removeEffect(net.minecraft.world.effect.MobEffects.NIGHT_VISION);
+                    }
+                    // Deep: Dolphins Grace, Night Vision, Haste
+                    if (player.hasEffect(EffectReg.DEEP.get())) {
+                        player.removeEffect(net.minecraft.world.effect.MobEffects.DOLPHINS_GRACE);
+                        player.removeEffect(net.minecraft.world.effect.MobEffects.NIGHT_VISION);
+                        player.removeEffect(net.minecraft.world.effect.MobEffects.DIG_SPEED);
+                    }
+                    // Invisibility
+                    if (player.hasEffect(EffectReg.INVISIBILITY.get())) {
+                        player.removeEffect(net.minecraft.world.effect.MobEffects.INVISIBILITY);
+                    }
                 }
             }
         }
@@ -110,6 +163,7 @@ public class ForgeEvents {
     public static void onLivingJump(LivingEvent.LivingJumpEvent event) {
         LivingEntity entity = event.getEntity();
         if (!entity.hasEffect(EffectReg.SHRINK.get())) return;
+        if (CompoundVEffect.arePowersSuppressed(entity)) return;
         if (!net.minecraftforge.fml.ModList.get().isLoaded("pehkui")) return;
         if (blueduck.compound_v.util.PehkuiHelper.getTargetScale(entity) >= 0.9f) return;
 
@@ -128,7 +182,8 @@ public class ForgeEvents {
 
     @SubscribeEvent
     public static void mobPowerTick(LivingEvent.LivingTickEvent event) {
-        if (!Config.enableMobPowers) return;
+        // No enableMobPowers gate here — injected mobs should always tick.
+        // onMobTick already checks for compound_v_powered tag.
         if (!(event.getEntity() instanceof Mob mob)) return;
         if (!(mob.level() instanceof ServerLevel level)) return;
         MobPowerManager.onMobTick(mob, level);
@@ -140,7 +195,9 @@ public class ForgeEvents {
         // Instakill attacker hits Invincible defender: massive mutual knockback, no damage
         if (event.getSource().getEntity() instanceof LivingEntity attacker
                 && attacker.hasEffect(EffectReg.INSTAKILL.get())
-                && event.getEntity().hasEffect(EffectReg.INVINCIBLE.get())) {
+                && !CompoundVEffect.arePowersSuppressed(attacker)
+                && event.getEntity().hasEffect(EffectReg.INVINCIBLE.get())
+                && !CompoundVEffect.arePowersSuppressed(event.getEntity())) {
 
             event.setAmount(0);
 
@@ -197,76 +254,138 @@ public class ForgeEvents {
         if (event.getEntity() instanceof ServerPlayer starPlayer
                 && starPlayer.hasEffect(EffectReg.STAR_POWER.get())
                 && StarPowerEffect.isStarActive(starPlayer.getUUID())
+                && !CompoundVEffect.arePowersSuppressed(starPlayer)
                 && !event.getSource().is(DamageTypes.FELL_OUT_OF_WORLD)) {
             event.setAmount(0);
             return;
         }
 
+        // Forcefield damage absorption — must be checked before other damage modifiers
+        if (event.getEntity() instanceof Player shieldPlayer
+                && shieldPlayer.hasEffect(EffectReg.FORCEFIELD.get())
+                && ForcefieldEffect.isActive(shieldPlayer.getUUID())
+                && !CompoundVEffect.arePowersSuppressed(shieldPlayer)) {
+            float remaining = ForcefieldEffect.absorbDamage(shieldPlayer, event.getAmount());
+            if (remaining <= 0) {
+                event.setAmount(0);
+                // Shield absorb visual
+                if (shieldPlayer.level() instanceof ServerLevel sl) {
+                    sl.sendParticles(ParticleTypes.ELECTRIC_SPARK,
+                            shieldPlayer.getX(), shieldPlayer.getY() + 1, shieldPlayer.getZ(),
+                            5, 0.5, 0.5, 0.5, 0.05);
+                    sl.playSound(null, shieldPlayer.getX(), shieldPlayer.getY(), shieldPlayer.getZ(),
+                            SoundEvents.SHIELD_BLOCK, SoundSource.PLAYERS, 0.4F, 1.5F);
+                }
+                return;
+            } else {
+                event.setAmount(remaining);
+                // Shield broke!
+                if (shieldPlayer.level() instanceof ServerLevel sl) {
+                    sl.sendParticles(ParticleTypes.FLASH,
+                            shieldPlayer.getX(), shieldPlayer.getY() + 1, shieldPlayer.getZ(),
+                            3, 0, 0, 0, 0);
+                    sl.playSound(null, shieldPlayer.getX(), shieldPlayer.getY(), shieldPlayer.getZ(),
+                            SoundEvents.SHIELD_BREAK, SoundSource.PLAYERS, 1.0F, 0.8F);
+                }
+            }
+        }
+
+        // Defensive teleport: passive mobs with Teleport blink away when damaged
+        if (event.getEntity() instanceof Mob hurtMob
+                && hurtMob.hasEffect(EffectReg.TELEPORT.get())
+                && !(hurtMob instanceof net.minecraft.world.entity.monster.Enemy)
+                && hurtMob.getTarget() == null
+                && event.getSource().getEntity() instanceof LivingEntity dmgSource
+                && hurtMob.level() instanceof ServerLevel sl) {
+            MobPowerManager.defensiveTeleport(hurtMob, dmgSource, sl);
+        }
+
         List<MobEffectInstance> effects = new ArrayList<>(event.getEntity().getActiveEffects());
+        boolean powersSuppressed = CompoundVEffect.arePowersSuppressed(event.getEntity());
         for (MobEffectInstance instance : effects) {
 
-            if (!event.getSource().is(DamageTypes.FELL_OUT_OF_WORLD)
+            if (!powersSuppressed && !event.getSource().is(DamageTypes.FELL_OUT_OF_WORLD)
                     && instance.getEffect().equals(EffectReg.INVINCIBLE.get())) {
                 event.setAmount(0);
             }
 
-            if (event.getSource().is(DamageTypes.FALL)
-                    && instance.getEffect().equals(EffectReg.CREATIVE_FLIGHT.get())) {
-                event.setAmount(0);
-            }
-
-            else if (event.getSource().is(DamageTypes.FALL)
-                    && instance.getEffect().equals(EffectReg.LASER_EYES_ADVANCED.get())) {
-                event.setAmount(0);
-            }
-
-            else if (instance.getEffect().equals(EffectReg.DENSITY.get())
-                    && event.getEntity() instanceof Player p
-                    && DensityEffect.isDense(p.getUUID())) {
-                if (event.getSource().is(DamageTypes.FALL)) {
+            if (!powersSuppressed) {
+                if (event.getSource().is(DamageTypes.FALL)
+                        && instance.getEffect().equals(EffectReg.CREATIVE_FLIGHT.get())) {
                     event.setAmount(0);
                 }
-                else {
-                    event.setAmount((float) (event.getAmount() * Config.densityDamageMultiplier));
-                }
-            }
 
-            else if (event.getSource().is(DamageTypes.FALL)
-                    && instance.getEffect().equals(EffectReg.SPIDER.get())) {
-                event.setAmount(0);
-            }
-            // Shrink: no fall damage (slow falling handles most, but this catches edge cases)
-            else if (event.getSource().is(DamageTypes.FALL)
-                    && instance.getEffect().equals(EffectReg.SHRINK.get())
-                    && net.minecraftforge.fml.ModList.get().isLoaded("pehkui")
-                    && blueduck.compound_v.util.PehkuiHelper.getTargetScale(event.getEntity()) < 0.9f) {
-                event.setAmount(0);
-            }
-            // Projectile Immunity: negate all projectile damage (safety net for deflection)
-            else if (instance.getEffect().equals(EffectReg.PROJECTILE_IMMUNITY.get())
-                    && event.getSource().getDirectEntity() instanceof net.minecraft.world.entity.projectile.Projectile) {
-                event.setAmount(0);
-            }
-            // Enlarge: damage reduction while enlarged (works for both players and mobs)
-            else if (instance.getEffect().equals(EffectReg.ENLARGE.get())
-                    && !event.getSource().is(DamageTypes.FELL_OUT_OF_WORLD)
-                    && net.minecraftforge.fml.ModList.get().isLoaded("pehkui")
-                    && blueduck.compound_v.effect.EnlargeEffect.isEnlarged(event.getEntity())) {
-                event.setAmount(event.getAmount() * blueduck.compound_v.effect.EnlargeEffect.ENLARGE_DAMAGE_REDUCTION);
-            }
-            // General Compound V damage reduction (players use per-effect getter, mobs use config)
-            else if (!event.getSource().is(DamageTypes.FELL_OUT_OF_WORLD)
-                    && instance.getEffect() instanceof CompoundVEffect cvEffect) {
-                if (event.getEntity() instanceof Player) {
-                    event.setAmount((float) (event.getAmount() * cvEffect.getDamageReduction(instance.getAmplifier())));
-                } else {
-                    event.setAmount((float) (event.getAmount() * Config.mobDamageReduction));
+                else if (event.getSource().is(DamageTypes.FALL)
+                        && instance.getEffect().equals(EffectReg.LASER_EYES_ADVANCED.get())) {
+                    event.setAmount(0);
+                }
+
+                else if (instance.getEffect().equals(EffectReg.DENSITY.get())
+                        && event.getEntity() instanceof Player p
+                        && DensityEffect.isDense(p.getUUID())) {
+                    if (event.getSource().is(DamageTypes.FALL)) {
+                        event.setAmount(0);
+                    }
+                    else {
+                        event.setAmount((float) (event.getAmount() * Config.densityDamageMultiplier));
+                    }
+                }
+
+                else if (event.getSource().is(DamageTypes.FALL)
+                        && instance.getEffect().equals(EffectReg.SPIDER.get())) {
+                    event.setAmount(0);
+                }
+                // Shrink: no fall damage (slow falling handles most, but this catches edge cases)
+                else if (event.getSource().is(DamageTypes.FALL)
+                        && instance.getEffect().equals(EffectReg.SHRINK.get())
+                        && net.minecraftforge.fml.ModList.get().isLoaded("pehkui")
+                        && blueduck.compound_v.util.PehkuiHelper.getTargetScale(event.getEntity()) < 0.9f) {
+                    event.setAmount(0);
+                }
+                // Creative Flight: no fall damage (mobs land after dive attacks)
+                else if (event.getSource().is(DamageTypes.FALL)
+                        && instance.getEffect().equals(EffectReg.CREATIVE_FLIGHT.get())) {
+                    event.setAmount(0);
+                }
+                // Leap: no fall damage (ground slam handles the impact instead)
+                else if (event.getSource().is(DamageTypes.FALL)
+                        && instance.getEffect().equals(EffectReg.LEAP.get())) {
+                    event.setAmount(0);
+                }
+                // Stormfront: no fall damage (flight power)
+                else if (event.getSource().is(DamageTypes.FALL)
+                        && instance.getEffect().equals(EffectReg.STORMFRONT.get())) {
+                    event.setAmount(0);
+                }
+                // Projectile Immunity: negate all projectile damage (safety net for deflection)
+                else if (instance.getEffect().equals(EffectReg.PROJECTILE_IMMUNITY.get())
+                        && event.getSource().getDirectEntity() instanceof net.minecraft.world.entity.projectile.Projectile) {
+                    event.setAmount(0);
+                }
+                // Enlarge: damage reduction while enlarged (works for both players and mobs)
+                else if (instance.getEffect().equals(EffectReg.ENLARGE.get())
+                        && !event.getSource().is(DamageTypes.FELL_OUT_OF_WORLD)
+                        && net.minecraftforge.fml.ModList.get().isLoaded("pehkui")
+                        && blueduck.compound_v.effect.EnlargeEffect.isEnlarged(event.getEntity())) {
+                    event.setAmount(event.getAmount() * blueduck.compound_v.effect.EnlargeEffect.ENLARGE_DAMAGE_REDUCTION);
+                }
+                // General Compound V damage reduction (players use per-effect getter, mobs use config)
+                else if (!event.getSource().is(DamageTypes.FELL_OUT_OF_WORLD)
+                        && instance.getEffect() instanceof CompoundVEffect cvEffect) {
+                    if (event.getEntity() instanceof Player) {
+                        event.setAmount((float) (event.getAmount() * cvEffect.getDamageReduction(instance.getAmplifier())));
+                    } else if (event.getEntity() instanceof net.minecraft.world.entity.monster.Enemy) {
+                        event.setAmount((float) (event.getAmount() * Config.mobDamageReduction));
+                    } else {
+                        event.setAmount((float) (event.getAmount() * Config.friendlyMobDamageReduction));
+                    }
                 }
             }
         }
 
         // Strength multiplier for players with Compound V
-        if (event.getSource().getEntity() instanceof Player attacker) {
+        if (event.getSource().getEntity() instanceof Player attacker
+                && !CompoundVEffect.arePowersSuppressed(attacker)) {
             for (MobEffectInstance instance : new ArrayList<>(attacker.getActiveEffects())) {
                 if (instance.getEffect() instanceof CompoundVEffect cvEffect) {
                     event.setAmount((float) (event.getAmount() * cvEffect.getStrengthMultiplier(instance.getAmplifier())));
@@ -275,17 +394,21 @@ public class ForgeEvents {
 
             // Instakill: melee attacks instantly kill the target
             if (attacker.hasEffect(EffectReg.INSTAKILL.get())
-                    && event.getSource().is(DamageTypes.PLAYER_ATTACK)
-                    && !(event.getEntity() instanceof Player)) {
+                    && event.getSource().is(DamageTypes.PLAYER_ATTACK)) {
                 event.setAmount(Float.MAX_VALUE);
             }
         }
-        // Strength multiplier for mobs with Compound V
+        // Strength multiplier for mobs with Compound V (hostile vs friendly)
         else if (event.getSource().getEntity() instanceof LivingEntity mobAttacker
-                && !(mobAttacker instanceof Player)) {
+                && !(mobAttacker instanceof Player)
+                && !CompoundVEffect.arePowersSuppressed(mobAttacker)) {
             for (MobEffectInstance instance : new ArrayList<>(mobAttacker.getActiveEffects())) {
                 if (instance.getEffect() instanceof CompoundVEffect) {
-                    event.setAmount((float) (event.getAmount() * Config.mobStrengthMultiplier));
+                    if (mobAttacker instanceof net.minecraft.world.entity.monster.Enemy) {
+                        event.setAmount((float) (event.getAmount() * Config.mobStrengthMultiplier));
+                    } else {
+                        event.setAmount((float) (event.getAmount() * Config.friendlyMobStrengthMultiplier));
+                    }
                     break; // only apply once
                 }
             }
@@ -293,7 +416,8 @@ public class ForgeEvents {
 
         // Berserker: damage scales with missing health (works for both players and mobs)
         if (event.getSource().getEntity() instanceof LivingEntity berserkerAttacker
-                && berserkerAttacker.hasEffect(EffectReg.BERSERKER.get())) {
+                && berserkerAttacker.hasEffect(EffectReg.BERSERKER.get())
+                && !CompoundVEffect.arePowersSuppressed(berserkerAttacker)) {
             float multiplier = BerserkerEffect.getDamageMultiplier(berserkerAttacker);
             event.setAmount(event.getAmount() * multiplier);
 
@@ -334,6 +458,7 @@ public class ForgeEvents {
 
     @SubscribeEvent
     public static void entityKnockbackEvent(LivingKnockBackEvent event) {
+        if (CompoundVEffect.arePowersSuppressed(event.getEntity())) return;
         List<MobEffectInstance> effects = new ArrayList<>(event.getEntity().getActiveEffects());
         for (MobEffectInstance instance : effects) {
             if (instance.getEffect().equals(EffectReg.INVINCIBLE.get())) {
@@ -348,8 +473,10 @@ public class ForgeEvents {
             else if (instance.getEffect() instanceof CompoundVEffect cvEffect) {
                 if (event.getEntity() instanceof Player) {
                     event.setStrength((float) (event.getOriginalStrength() * cvEffect.getKnockbackReduction(instance.getAmplifier())));
-                } else {
+                } else if (event.getEntity() instanceof net.minecraft.world.entity.monster.Enemy) {
                     event.setStrength((float) (event.getOriginalStrength() * Config.mobKnockbackReduction));
+                } else {
+                    event.setStrength((float) (event.getOriginalStrength() * Config.friendlyMobKnockbackReduction));
                 }
             }
         }
@@ -385,7 +512,8 @@ public class ForgeEvents {
         // Projectile Immunity: deflect projectiles that hit entities with this effect
         if (event.getRayTraceResult() instanceof net.minecraft.world.phys.EntityHitResult entityHit
                 && entityHit.getEntity() instanceof LivingEntity hitEntity
-                && hitEntity.hasEffect(EffectReg.PROJECTILE_IMMUNITY.get())) {
+                && hitEntity.hasEffect(EffectReg.PROJECTILE_IMMUNITY.get())
+                && !CompoundVEffect.arePowersSuppressed(hitEntity)) {
 
             net.minecraft.world.entity.projectile.Projectile projectile = event.getProjectile();
 
@@ -487,6 +615,8 @@ public class ForgeEvents {
                 oldPlayer.reviveCaps(); // required to access capabilities on dead entity
                 Player newPlayer = event.getEntity();
 
+                java.util.List<net.minecraft.world.effect.MobEffect> copiedPowers = new java.util.ArrayList<>();
+
                 for (MobEffectInstance inst : oldPlayer.getActiveEffects()) {
                     if (inst.getEffect() instanceof CompoundVEffect) {
                         MobEffectInstance copy = new MobEffectInstance(
@@ -494,8 +624,18 @@ public class ForgeEvents {
                                 false, false, false);
                         copy.setCurativeItems(new java.util.ArrayList<>());
                         newPlayer.addEffect(copy);
+                        copiedPowers.add(inst.getEffect());
                     }
                 }
+
+                // Virus strips one random power on death
+                if (Config.virusRemovesPowerOnDeath && !copiedPowers.isEmpty()
+                        && VirusHelper.hasVirus(oldPlayer, true)) {
+                    net.minecraft.world.effect.MobEffect toRemove =
+                            copiedPowers.get(newPlayer.getRandom().nextInt(copiedPowers.size()));
+                    newPlayer.removeEffect(toRemove);
+                }
+
                 oldPlayer.invalidateCaps();
             }
 
@@ -566,6 +706,9 @@ public class ForgeEvents {
 
         if (!isCompoundV && !isTempV && !isV1) return;
 
+        // Creepers excluded — vanilla creates lingering effect clouds on explosion
+        if (target instanceof net.minecraft.world.entity.monster.Creeper) return;
+
         // Check if mob already has a Compound V effect
         for (net.minecraft.world.effect.MobEffectInstance inst : target.getActiveEffects()) {
             if (inst.getEffect() instanceof blueduck.compound_v.effect.CompoundVEffect
@@ -585,18 +728,64 @@ public class ForgeEvents {
                     event.getLevel().getRandom().nextInt(
                             blueduck.compound_v.registry.CompoundVEffectMatrix.MOB_FAILURE_MATRIX.size()
                     )).apply(target, permanent);
-        } else if (!blueduck.compound_v.registry.CompoundVEffectMatrix.MOB_EFFECT_MATRIX.isEmpty()) {
-            if (isV1) {
-                // V1: max level
-                blueduck.compound_v.registry.CompoundVEffectMatrix.MOB_EFFECT_MATRIX.get(
-                        event.getLevel().getRandom().nextInt(
-                                blueduck.compound_v.registry.CompoundVEffectMatrix.MOB_EFFECT_MATRIX.size()
-                        )).applyMaxLevel(target);
-            } else {
-                blueduck.compound_v.registry.CompoundVEffectMatrix.MOB_EFFECT_MATRIX.get(
-                        event.getLevel().getRandom().nextInt(
-                                blueduck.compound_v.registry.CompoundVEffectMatrix.MOB_EFFECT_MATRIX.size()
-                        )).apply(target, permanent);
+        } else {
+            // Use MobPowerManager's species-specific pool for power selection
+            List<MobPowerManager.WeightedPower> pool = MobPowerManager.getEligiblePowers(target);
+            if (!pool.isEmpty()) {
+                // Build weighted selection
+                int totalWeight = 0;
+                for (var wp : pool) totalWeight += wp.weight();
+                int roll = event.getLevel().getRandom().nextInt(totalWeight);
+                MobPowerManager.WeightedPower chosen = pool.get(pool.size() - 1);
+                int cumulative = 0;
+                for (var wp : pool) {
+                    cumulative += wp.weight();
+                    if (roll < cumulative) {
+                        chosen = wp;
+                        break;
+                    }
+                }
+
+                // Apply the power
+                int amp = chosen.minAmp();
+                if (chosen.maxAmp() > chosen.minAmp()) {
+                    amp += event.getLevel().getRandom().nextInt(chosen.maxAmp() - chosen.minAmp() + 1);
+                }
+                if (isV1) {
+                    // V1: apply at max registered level
+                    int maxLevel = blueduck.compound_v.registry.CompoundVEffectMatrix.getMaxLevel(chosen.power().get());
+                    if (maxLevel > 0) amp = maxLevel;
+                }
+                net.minecraft.world.effect.MobEffectInstance inst = new net.minecraft.world.effect.MobEffectInstance(
+                        chosen.power().get(),
+                        permanent ? net.minecraft.world.effect.MobEffectInstance.INFINITE_DURATION : Config.tempVDuration,
+                        amp, false, false, false);
+                inst.setCurativeItems(new java.util.ArrayList<>());
+                target.addEffect(inst);
+
+                // Handle bonus laser eyes for flight
+                if (chosen.power() == EffectReg.CREATIVE_FLIGHT && target instanceof Mob mob2) {
+                    float laserRoll = mob2.getRandom().nextFloat();
+                    if (laserRoll < 0.35f) {
+                        net.minecraft.world.effect.MobEffectInstance laserInst = new net.minecraft.world.effect.MobEffectInstance(
+                                EffectReg.LASER_EYES_BASIC.get(),
+                                permanent ? net.minecraft.world.effect.MobEffectInstance.INFINITE_DURATION : Config.tempVDuration,
+                                0, false, false, false);
+                        laserInst.setCurativeItems(new java.util.ArrayList<>());
+                        target.addEffect(laserInst);
+                        if (target instanceof Mob m) m.getPersistentData().putInt("compound_v_laser_color",
+                                MobPowerManager.rollLaserColor(m));
+                    } else if (laserRoll < 0.45f) {
+                        net.minecraft.world.effect.MobEffectInstance advLaserInst = new net.minecraft.world.effect.MobEffectInstance(
+                                EffectReg.LASER_EYES_ADVANCED.get(),
+                                permanent ? net.minecraft.world.effect.MobEffectInstance.INFINITE_DURATION : Config.tempVDuration,
+                                0, false, false, false);
+                        advLaserInst.setCurativeItems(new java.util.ArrayList<>());
+                        target.addEffect(advLaserInst);
+                        if (target instanceof Mob m) m.getPersistentData().putInt("compound_v_laser_color",
+                                m instanceof EnderMan ? S2CLaserSyncPacket.COLOR_PURPLE : S2CLaserSyncPacket.COLOR_RED);
+                    }
+                }
             }
         }
 
@@ -609,7 +798,12 @@ public class ForgeEvents {
             if (mob.hasEffect(EffectReg.LASER_EYES_BASIC.get())
                     && !mob.getPersistentData().contains("compound_v_laser_color")) {
                 mob.getPersistentData().putInt("compound_v_laser_color",
-                        event.getLevel().getRandom().nextInt(6));
+                        MobPowerManager.rollLaserColor(mob));
+            }
+            if (mob.hasEffect(EffectReg.LASER_EYES_ADVANCED.get())
+                    && !mob.getPersistentData().contains("compound_v_laser_color")) {
+                mob.getPersistentData().putInt("compound_v_laser_color",
+                        mob instanceof EnderMan ? S2CLaserSyncPacket.COLOR_PURPLE : S2CLaserSyncPacket.COLOR_RED);
             }
         }
 
@@ -639,6 +833,33 @@ public class ForgeEvents {
                     new ItemStack(Items.EMERALD, 64),
                     new ItemStack(ItemReg.TEMP_V.get(), 1),
                     1, 14, .2f));
+        }
+    }
+
+    /**
+     * Luck power: boost looting level on mob kills.
+     */
+    @SubscribeEvent
+    public static void onLootingLevel(net.minecraftforge.event.entity.living.LootingLevelEvent event) {
+        if (event.getDamageSource() != null && event.getDamageSource().getEntity() instanceof LivingEntity attacker) {
+            if (CompoundVEffect.arePowersSuppressed(attacker)) return;
+            int luckLevel = blueduck.compound_v.effect.LuckEffect.getLuckLevel(attacker);
+            if (luckLevel > 0) {
+                event.setLootingLevel(event.getLootingLevel() + luckLevel);
+            }
+        }
+    }
+
+    /**
+     * Luck power: bonus XP from mining. Fortune handled by LuckFortuneModifier (GLM).
+     */
+    @SubscribeEvent
+    public static void onBlockBreak(net.minecraftforge.event.level.BlockEvent.BreakEvent event) {
+        if (event.getPlayer() != null && !CompoundVEffect.arePowersSuppressed(event.getPlayer())) {
+            int luckLevel = blueduck.compound_v.effect.LuckEffect.getLuckLevel(event.getPlayer());
+            if (luckLevel > 0) {
+                event.setExpToDrop(event.getExpToDrop() + luckLevel); // bonus XP
+            }
         }
     }
 

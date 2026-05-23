@@ -75,6 +75,12 @@ public class StarPowerEffect extends CompoundVEffect {
         super(category);
     }
 
+
+    @Override
+    public PowerType getPowerType() {
+        return PowerType.ACTIVE;
+    }
+
     public static boolean isStarActive(UUID uuid) {
         StarState state = stateMap.get(uuid);
         return state != null && state.activeTicksRemaining > 0;
@@ -112,7 +118,7 @@ public class StarPowerEffect extends CompoundVEffect {
         if (now < state.cooldownEndTime) {
             int remaining = (int) ((state.cooldownEndTime - now) / 20);
             player.displayClientMessage(
-                    net.minecraft.network.chat.Component.literal("Star Power cooldown: " + remaining + "s"),
+                    net.minecraft.network.chat.Component.literal("§7Star Power cooldown: " + remaining + "s"),
                     true);
             return;
         }
@@ -140,6 +146,7 @@ public class StarPowerEffect extends CompoundVEffect {
 
     @Override
     public void applyEffectTick(LivingEntity entity, int amplifier) {
+        if (CompoundVEffect.arePowersSuppressed(entity)) return;
         if (!(entity.level() instanceof ServerLevel level)) return;
 
         // === Mob behavior: always-on contact damage aura ===
@@ -162,12 +169,12 @@ public class StarPowerEffect extends CompoundVEffect {
             int secondsLeft = state.activeTicksRemaining / 20;
             player.displayClientMessage(
                     net.minecraft.network.chat.Component.literal(
-                            "§6§l★ " + secondsLeft + "s ★"),
+                            "§c§lStar Power active: " + secondsLeft + "s"),
                     true);
         } else {
             player.displayClientMessage(
                     net.minecraft.network.chat.Component.literal(
-                            "§6§l★ ACTIVE ★"),
+                            "§c§lStar Power active"),
                     true);
         }
 

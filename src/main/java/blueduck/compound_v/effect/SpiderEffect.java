@@ -43,6 +43,11 @@ public class SpiderEffect extends CompoundVEffect {
         super(category);
     }
 
+    @Override
+    public PowerType getPowerType() {
+        return PowerType.ACTIVE;
+    }
+
     // --- Wall climbing (every tick, passive) ---
 
     @Override

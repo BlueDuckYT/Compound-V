@@ -46,6 +46,12 @@ public class EnlargeEffect extends CompoundVEffect {
         super(category);
     }
 
+
+    @Override
+    public PowerType getPowerType() {
+        return PowerType.ACTIVE;
+    }
+
     public static boolean isPehkuiLoaded() {
         return ModList.get().isLoaded("pehkui");
     }
@@ -125,6 +131,7 @@ public class EnlargeEffect extends CompoundVEffect {
     @Override
     public void applyEffectTick(LivingEntity entity, int amplifier) {
         super.applyEffectTick(entity, amplifier);
+        if (CompoundVEffect.arePowersSuppressed(entity)) return;
         if (!isPehkuiLoaded()) return;
         if (!(entity.level() instanceof ServerLevel sl)) return;
 

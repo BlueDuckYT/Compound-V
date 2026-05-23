@@ -72,18 +72,43 @@ public class V1Item extends Item {
     /**
      * Upgrade all existing CompoundVEffect instances to their max amplifier level
      * and make them permanent. Looks up max level from all effect matrices.
+     *
+     * Special case: PowerAbsorption (PowerPlex) evolves into Stormfront.
      */
     private void upgradeToMaxLevel(LivingEntity entity) {
         java.util.List<MobEffectInstance> toUpgrade = new java.util.ArrayList<>();
+        boolean hasPowerAbsorption = false;
+
         for (MobEffectInstance inst : entity.getActiveEffects()) {
             if (inst.getEffect() instanceof CompoundVEffect
                     && !(inst.getEffect() instanceof BadCompoundVEffect)) {
-                toUpgrade.add(inst);
+                if (inst.getEffect() == blueduck.compound_v.registry.EffectReg.POWER_ABSORPTION.get()) {
+                    hasPowerAbsorption = true;
+                } else {
+                    toUpgrade.add(inst);
+                }
             }
         }
+
+        // PowerAbsorption → Stormfront evolution
+        if (hasPowerAbsorption) {
+            entity.removeEffect(blueduck.compound_v.registry.EffectReg.POWER_ABSORPTION.get());
+            blueduck.compound_v.effect.PowerAbsorptionEffect.clearCharge(entity.getUUID());
+
+            int stormfrontMax = CompoundVEffectMatrix.getMaxLevel(
+                    blueduck.compound_v.registry.EffectReg.STORMFRONT.get());
+            if (stormfrontMax < 0) stormfrontMax = 0;
+            MobEffectInstance stormfront = new MobEffectInstance(
+                    blueduck.compound_v.registry.EffectReg.STORMFRONT.get(),
+                    MobEffectInstance.INFINITE_DURATION, stormfrontMax, false, false, false);
+            stormfront.setCurativeItems(new java.util.ArrayList<>());
+            entity.addEffect(stormfront);
+        }
+
+        // Normal upgrades for all other effects
         for (MobEffectInstance old : toUpgrade) {
             int maxLevel = CompoundVEffectMatrix.getMaxLevel(old.getEffect());
-            if (maxLevel < 0) maxLevel = old.getAmplifier(); // fallback: keep current
+            if (maxLevel < 0) maxLevel = old.getAmplifier();
             entity.removeEffect(old.getEffect());
             MobEffectInstance upgraded = new MobEffectInstance(old.getEffect(),
                     MobEffectInstance.INFINITE_DURATION, maxLevel, false, false, false);

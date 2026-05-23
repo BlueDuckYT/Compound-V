@@ -62,6 +62,12 @@ public class HeadPopEffect extends CompoundVEffect {
         super(category);
     }
 
+
+    @Override
+    public PowerType getPowerType() {
+        return PowerType.ACTIVE;
+    }
+
     @Override
     public void holdActivate(ServerPlayer player, int amplifier, ServerLevel level) {
         super.holdActivate(player, amplifier, level);

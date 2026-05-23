@@ -34,6 +34,12 @@ public class DensityEffect extends CompoundVEffect {
         super(category);
     }
 
+
+    @Override
+    public PowerType getPowerType() {
+        return PowerType.ACTIVE;
+    }
+
     public static boolean isDense(UUID uuid) {
         return denseActive.contains(uuid);
     }
@@ -66,6 +72,7 @@ public class DensityEffect extends CompoundVEffect {
     @Override
     public void applyEffectTick(LivingEntity entity, int amplifier) {
         super.applyEffectTick(entity, amplifier);
+        if (CompoundVEffect.arePowersSuppressed(entity)) return;
         if (!(entity instanceof ServerPlayer player)) return;
         ServerLevel level = player.serverLevel();
         UUID uuid = player.getUUID();

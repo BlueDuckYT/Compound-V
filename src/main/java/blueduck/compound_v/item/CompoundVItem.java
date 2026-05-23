@@ -3,6 +3,7 @@ package blueduck.compound_v.item;
 import blueduck.compound_v.Config;
 import blueduck.compound_v.effect.CompoundVEffect;
 import blueduck.compound_v.registry.CompoundVEffectMatrix;
+import blueduck.compound_v.util.CompoundVEffectGiver;
 import net.minecraft.sounds.SoundEvent;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.world.effect.MobEffectInstance;
@@ -56,7 +57,12 @@ public class CompoundVItem extends Item {
                 if (isBad) {
                     CompoundVEffectMatrix.FAILURE_MATRIX.get(p_41349_.getRandom().nextInt(CompoundVEffectMatrix.FAILURE_MATRIX.size())).apply(p_41350_, permanent);
                 } else {
-                    CompoundVEffectMatrix.EFFECT_MATRIX.get(p_41349_.getRandom().nextInt(CompoundVEffectMatrix.EFFECT_MATRIX.size())).apply(p_41350_, permanent);
+                    // Determine how many powers to roll
+                    boolean multiEnabled = permanent ? Config.enableMultiPowers : Config.tempVEnableMultiPowers;
+                    int maxCount = permanent ? Config.multiPowerMaxCount : Config.tempVMultiPowerMaxCount;
+                    int powerCount = multiEnabled ? 1 + p_41349_.getRandom().nextInt(maxCount) : 1;
+
+                    rollDistinctPowers(p_41350_, p_41349_, powerCount, permanent);
                 }
             }
         }
@@ -66,6 +72,66 @@ public class CompoundVItem extends Item {
         }
 
         return ItemStack.EMPTY;
+    }
+
+    /**
+     * Roll N distinct powers from the effect matrix. Avoids duplicate effect types.
+     * If only 1 power is rolled, it can be any type (passive or active).
+     * When rolling 2+, only one active is normally allowed. Additional actives have a
+     * 10% chance per roll — most multi-power combos are 1 active + N passives.
+     * Mimic is always exclusive — if rolled, it's the only power granted.
+     */
+    private void rollDistinctPowers(LivingEntity entity, Level level, int count, boolean permanent) {
+        java.util.ArrayList<CompoundVEffectGiver> pool = CompoundVEffectMatrix.EFFECT_MATRIX;
+        if (pool.isEmpty()) return;
+
+        java.util.Set<net.minecraft.world.effect.MobEffect> rolledEffects = new java.util.HashSet<>();
+        java.util.List<CompoundVEffectGiver> toApply = new java.util.ArrayList<>();
+        boolean hasActive = false;
+        int attempts = 0;
+        int maxAttempts = count * 30; // safety valve
+
+        while (rolledEffects.size() < count && attempts < maxAttempts) {
+            attempts++;
+            CompoundVEffectGiver giver = pool.get(level.getRandom().nextInt(pool.size()));
+            if (rolledEffects.contains(giver.mobEffect)) continue;
+
+            // For multi-power: only one active allowed (single keybind)
+            if (count > 1 && hasActive
+                    && giver.mobEffect instanceof blueduck.compound_v.effect.CompoundVEffect cvEffect
+                    && cvEffect.getPowerType() == blueduck.compound_v.effect.CompoundVEffect.PowerType.ACTIVE) {
+                continue;
+            }
+
+            // Check incompatibilities with already-rolled powers
+            boolean incompatible = false;
+            for (CompoundVEffectGiver existing : toApply) {
+                if (blueduck.compound_v.effect.CompoundVEffect.areIncompatible(giver.mobEffect, existing.mobEffect)) {
+                    incompatible = true;
+                    break;
+                }
+            }
+            if (incompatible) continue;
+
+            rolledEffects.add(giver.mobEffect);
+            toApply.add(giver);
+
+            if (giver.mobEffect instanceof blueduck.compound_v.effect.CompoundVEffect cvEffect
+                    && cvEffect.getPowerType() == blueduck.compound_v.effect.CompoundVEffect.PowerType.ACTIVE) {
+                hasActive = true;
+            }
+
+            // Mimic is exclusive — if we rolled it, stop and only give Mimic
+            if (giver.mobEffect == blueduck.compound_v.registry.EffectReg.MIMIC.get()) {
+                toApply.clear();
+                toApply.add(giver);
+                break;
+            }
+        }
+
+        for (CompoundVEffectGiver giver : toApply) {
+            giver.apply(entity, permanent);
+        }
     }
 
     /**

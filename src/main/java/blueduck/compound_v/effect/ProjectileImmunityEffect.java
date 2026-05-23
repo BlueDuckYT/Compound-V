@@ -20,4 +20,5 @@ public class ProjectileImmunityEffect extends CompoundVEffect {
     public ProjectileImmunityEffect(MobEffectCategory category) {
         super(category);
     }
+
 }

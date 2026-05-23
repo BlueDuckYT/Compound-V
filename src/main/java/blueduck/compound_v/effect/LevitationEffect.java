@@ -12,8 +12,15 @@ public class LevitationEffect extends CompoundVEffect {
         super(category);
     }
 
+
+    @Override
+    public PowerType getPowerType() {
+        return PowerType.ACTIVE;
+    }
+
     public void applyEffectTick(LivingEntity entity, int amplifier) {
         super.applyEffectTick(entity, amplifier);
+        if (CompoundVEffect.arePowersSuppressed(entity)) return;
         if (entity instanceof net.minecraft.server.level.ServerPlayer && entity.hasEffect(MobEffects.LEVITATION)) {
             entity.addEffect(new MobEffectInstance(MobEffects.LEVITATION, 200, 4, false, false, false));
         }

@@ -142,6 +142,24 @@ public class LaserBeamRenderer {
                         CORE_HALF, GLOW_HALF, OUTER_HALF);
                 }
             } else {
+                // --- Mob rendering ---
+                if (info.colorIndex == S2CLaserSyncPacket.COLOR_CHEST_BLAST) {
+                    // Mob chest blast: wide beam from chest height
+                    Vec3 mobPos = new Vec3(
+                            Mth.lerp(partialTick, living.xo, living.getX()),
+                            Mth.lerp(partialTick, living.yo, living.getY()) + living.getBbHeight() * 0.6,
+                            Mth.lerp(partialTick, living.zo, living.getZ()));
+                    Vec3 beamDir = hitPos.subtract(mobPos).normalize();
+                    Vec3 beamStart = mobPos.add(beamDir.scale(0.5));
+
+                    float blastCore = 0.12f;
+                    float blastGlow = 0.3f;
+                    float blastOuter = 0.5f;
+
+                    renderBeaconBeam(consumer, matrix, beamStart, hitPos, wr, wg, wb, 0.9f * flicker, blastCore);
+                    renderBeaconBeam(consumer, matrix, beamStart, hitPos, cr, cg, cb, 0.5f * flicker, blastGlow);
+                    renderBeaconBeam(consumer, matrix, beamStart, hitPos, gr, gg, gb, 0.15f * glowFlicker, blastOuter);
+                } else {
                 // --- Mob: dual-eye beams using head yaw ---
                 float headYaw = Mth.lerp(partialTick, living.yHeadRotO, living.yHeadRot);
                 float headYawRad = (float) Math.toRadians(headYaw);
@@ -184,6 +202,7 @@ public class LaserBeamRenderer {
                 renderDualBeam(consumer, matrix, leftEye, rightEye, hitPos,
                         wr, wg, wb, cr, cg, cb, gr, gg, gb, flicker, glowFlicker,
                         mobCore, mobGlow, mobOuter);
+                }
             }
 
             poseStack.popPose();

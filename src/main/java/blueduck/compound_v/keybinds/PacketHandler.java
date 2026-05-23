@@ -4,6 +4,7 @@ import blueduck.compound_v.CompoundVMod;
 import blueduck.compound_v.util.C2SHeldPowerPacket;
 import blueduck.compound_v.util.C2SPushPacket;
 import blueduck.compound_v.util.S2CLaserSyncPacket;
+import blueduck.compound_v.util.S2CStormfrontBeamPacket;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraftforge.network.NetworkDirection;
@@ -17,7 +18,7 @@ public class PacketHandler {
                     new ResourceLocation(CompoundVMod.MODID, "main"))
             .serverAcceptedVersions((status) -> true)
             .clientAcceptedVersions((status) -> true)
-            .networkProtocolVersion(() -> "1.5")
+            .networkProtocolVersion(() -> "1.6")
             .simpleChannel();
 
     private static int packetId = 0;
@@ -43,6 +44,12 @@ public class PacketHandler {
                 .decoder(S2CLaserSyncPacket::new)
                 .encoder(S2CLaserSyncPacket::toBytes)
                 .consumerMainThread(S2CLaserSyncPacket::handle)
+                .add();
+
+        INSTANCE.messageBuilder(S2CStormfrontBeamPacket.class, id(), NetworkDirection.PLAY_TO_CLIENT)
+                .decoder(S2CStormfrontBeamPacket::new)
+                .encoder(S2CStormfrontBeamPacket::toBytes)
+                .consumerMainThread(S2CStormfrontBeamPacket::handle)
                 .add();
     }
 

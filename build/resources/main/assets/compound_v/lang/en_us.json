@@ -28,9 +28,16 @@
   "effect.compound_v.mind_control": "Compound V",
   "effect.compound_v.berserker": "Compound V",
   "effect.compound_v.projectile_immunity": "Compound V",
-  "effect.compound_v.radioactive": "Compound V",
   "effect.compound_v.star_power": "Compound V",
   "effect.compound_v.chest_blast": "Compound V",
+  "effect.compound_v.leap": "Compound V",
+  "effect.compound_v.explosive": "Compound V",
+  "effect.compound_v.healing": "Compound V",
+  "effect.compound_v.mimic": "Compound V",
+  "effect.compound_v.petrifying_gaze": "Compound V",
+  "effect.compound_v.stormfront": "Compound V",
+  "effect.compound_v.forcefield": "Compound V",
+  "effect.compound_v.luck": "Compound V",
 
   "effect.compound_v.charging": "Charging",
 
@@ -39,7 +46,8 @@
   "effect.compound_v.uncontrolled_teleport": "Compound V",
   "effect.compound_v.blindness": "Compound V",
   "effect.compound_v.magnetism": "Compound V",
-  "effect.compound_v.radioactive_decay": "Compound V",
+  "effect.compound_v.nullify": "Compound V",
+  "effect.compound_v.nullified": "Nullified",
 
   "key.category.compound_v.compound_v": "Compound V",
   "key.category.compound_v.activate_power": "Activate Power"

@@ -41,6 +41,12 @@ public class SonicScreamEffect extends CompoundVEffect {
         super(category);
     }
 
+
+    @Override
+    public PowerType getPowerType() {
+        return PowerType.ACTIVE;
+    }
+
     @Override
     public void activate(ServerPlayer player, int amplifier, ServerLevel level) {
         super.activate(player, amplifier, level);
@@ -73,6 +79,7 @@ public class SonicScreamEffect extends CompoundVEffect {
     @Override
     public void applyEffectTick(LivingEntity entity, int amplifier) {
         super.applyEffectTick(entity, amplifier);
+        if (CompoundVEffect.arePowersSuppressed(entity)) return;
         if (!(entity instanceof ServerPlayer player)) return;
         ServerLevel level = player.serverLevel();
         UUID uuid = player.getUUID();
@@ -155,10 +162,14 @@ public class SonicScreamEffect extends CompoundVEffect {
             double dot = toTarget.normalize().dot(lookDir);
             if (dot < cosThreshold) continue;
 
-            // Sonic boom damage (bypasses armor)
+            // Sonic boom damage (bypasses armor) — halved against players
             float falloff = 1.0f - (float) (dist / RANGE) * 0.4f;
+            float dmg = DAMAGE * falloff;
+            if (target instanceof Player) {
+                dmg *= 0.5f;
+            }
             target.invulnerableTime = 0;
-            target.hurt(player.damageSources().sonicBoom(player), DAMAGE * falloff);
+            target.hurt(player.damageSources().sonicBoom(player), dmg);
 
             // Heavy knockback
             double knockScale = 2.0 - (dist / RANGE);

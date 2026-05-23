@@ -20,13 +20,17 @@ public class DeepEffect extends CompoundVEffect {
         super(category);
     }
 
+
     public void applyEffectTick(LivingEntity entity, int amplifier) {
         super.applyEffectTick(entity, amplifier);
+        if (CompoundVEffect.arePowersSuppressed(entity)) return;
         if (entity.isInWater()) {
             entity.addEffect(new MobEffectInstance(MobEffects.DOLPHINS_GRACE, 100, 0, false, false, false));
         }
         if (entity.isEyeInFluid(FluidTags.WATER)) {
             entity.addEffect(new MobEffectInstance(MobEffects.NIGHT_VISION, 400, 0, false, false, false));
+            // Normal mining speed underwater (Haste II cancels the water penalty)
+            entity.addEffect(new MobEffectInstance(MobEffects.DIG_SPEED, 100, 1, false, false, false));
             if (entity instanceof Player) {
                 entity.setAirSupply(300);
             }

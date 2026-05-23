@@ -3,7 +3,7 @@ Specification-Title: compound_v
 Specification-Vendor: Blue Duck
 Specification-Version: 1
 Implementation-Title: Compound-V
-Implementation-Version: 2.1.1
+Implementation-Version: 2.2.4
 Implementation-Vendor: Blue Duck
-Implementation-Timestamp: 2026-04-24T13:28:44-0400
+Implementation-Timestamp: 2026-05-21T22:09:22-0400
 

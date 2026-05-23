@@ -1,6 +1,5 @@
 package blueduck.compound_v.effect;
 
-import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -15,34 +14,34 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Powerplex-style power absorption.
+ * PowerPlex — Energy absorption and discharge.
  *
- * Taking damage charges a meter (0–100). Pressing V discharges it as an
- * electric burst that damages nearby mobs. Below 10% charge the discharge
- * fizzles. Above that, range (4–16 blocks), damage (2–20), and particle
- * count scale linearly. At high charge (>50%) the burst lingers, pulsing
- * follow-up damage ticks that decay over time.
+ * Taking damage charges a meter (0–100).
+ * Hold V to discharge: damages all entities in radius, drains charge over time.
+ * Damage scales with current charge level. I-frames zeroed for stun-lock.
+ * Press V shows current charge level.
+ *
+ * Upgrades to Stormfront when taking V1.
  */
 public class PowerAbsorptionEffect extends CompoundVEffect {
 
     public static final float MAX_CHARGE = 100.0f;
     private static final float FIZZLE_THRESHOLD = 0.10f;
 
-    private static final float MIN_RANGE = 2.0f;
-    private static final float MAX_RANGE = 8.0f;
-    private static final float MIN_DAMAGE = 1.0f;
-    private static final float MAX_DAMAGE = 10.0f;
-    private static final int MIN_PARTICLES = 10;
-    private static final int MAX_PARTICLES = 40;
-
     /** Server-side charge per player. */
     private static final Map<UUID, Float> chargeMap = new ConcurrentHashMap<>();
 
-    /** Active lingering discharges. */
-    private static final Map<UUID, LingeringDischarge> lingeringMap = new ConcurrentHashMap<>();
+    /** Track hold discharge tick rate. */
+    private static final Map<UUID, Long> lastDischargeTick = new ConcurrentHashMap<>();
 
     public PowerAbsorptionEffect(MobEffectCategory category) {
         super(category);
+    }
+
+
+    @Override
+    public PowerType getPowerType() {
+        return PowerType.ACTIVE;
     }
 
     // ---- Charge API (called from ForgeEvents) ----
@@ -54,8 +53,7 @@ public class PowerAbsorptionEffect extends CompoundVEffect {
      */
     public static void addCharge(UUID playerUUID, float damageAmount) {
         float current = chargeMap.getOrDefault(playerUUID, 0.0f);
-        // Charge gain = damage * 3 (so ~33 raw damage = full charge)
-        float gain = damageAmount * 3.0f;
+        float gain = damageAmount * 3.0f; // ~33 raw damage = full charge
         chargeMap.put(playerUUID, Math.min(MAX_CHARGE, current + gain));
     }
 
@@ -65,7 +63,7 @@ public class PowerAbsorptionEffect extends CompoundVEffect {
 
     public static void clearCharge(UUID playerUUID) {
         chargeMap.remove(playerUUID);
-        lingeringMap.remove(playerUUID);
+        lastDischargeTick.remove(playerUUID);
     }
 
     // ---- Effect ticking ----
@@ -73,6 +71,7 @@ public class PowerAbsorptionEffect extends CompoundVEffect {
     @Override
     public void applyEffectTick(LivingEntity entity, int amplifier) {
         super.applyEffectTick(entity, amplifier);
+        if (CompoundVEffect.arePowersSuppressed(entity)) return;
 
         if (!(entity instanceof ServerPlayer player)) return;
         ServerLevel level = player.serverLevel();
@@ -86,116 +85,83 @@ public class PowerAbsorptionEffect extends CompoundVEffect {
                     player.getX(), player.getY() + 1.0, player.getZ(),
                     count, 0.3, 0.5, 0.3, 0.02);
         }
-
-        // Process lingering discharge pulses
-        LingeringDischarge ld = lingeringMap.get(uuid);
-        if (ld != null) {
-            ld.ticksRemaining--;
-            if (ld.ticksRemaining <= 0) {
-                lingeringMap.remove(uuid);
-            } else if (ld.ticksRemaining % ld.tickInterval == 0) {
-                doElectricBurst(player, level, ld.range, ld.damagePerPulse,
-                        Math.max(5, (int) (ld.initialParticles * 0.4f)), false);
-            }
-        }
     }
 
     @Override
     public boolean isDurationEffectTick(int tick, int amplifier) {
-        // Tick every 5 ticks for responsive lingering pulses and ambient sparks
         return tick % 5 == 0;
     }
 
-    // ---- Activation (V key press) ----
+    // ---- Press V: display charge level ----
 
     @Override
     public void activate(ServerPlayer player, int amplifier, ServerLevel level) {
         super.activate(player, amplifier, level);
+        UUID uuid = player.getUUID();
+        int chargeDisplay = (int) (getChargePercent(uuid) * 100);
+        player.displayClientMessage(
+                net.minecraft.network.chat.Component.literal("§6Charge: §e" + chargeDisplay + "%"), true);
+    }
 
+    // ---- Hold V: continuous discharge ----
+
+    @Override
+    public void holdActivate(ServerPlayer player, int amplifier, ServerLevel level) {
         UUID uuid = player.getUUID();
         float charge = chargeMap.getOrDefault(uuid, 0.0f);
         float percent = charge / MAX_CHARGE;
 
-        // Drain all charge
-        chargeMap.put(uuid, 0.0f);
-
-        // Below threshold: fizzle
         if (percent < FIZZLE_THRESHOLD) {
-            level.sendParticles(ParticleTypes.ELECTRIC_SPARK,
-                    player.getX(), player.getY() + 1.0, player.getZ(),
-                    3, 0.2, 0.3, 0.2, 0.01);
-            level.playSound(null, player.getX(), player.getY(), player.getZ(),
-                    SoundEvents.FIREWORK_ROCKET_TWINKLE, SoundSource.PLAYERS, 0.3F, 2.0F);
+            player.displayClientMessage(
+                    net.minecraft.network.chat.Component.literal("§7Charge too low..."), true);
             return;
         }
 
-        // Remap [threshold..1] → [0..1]
-        float scaled = (percent - FIZZLE_THRESHOLD) / (1.0f - FIZZLE_THRESHOLD);
+        long now = level.getGameTime();
+        int tickRate = blueduck.compound_v.Config.powerplexDischargeTickRate;
+        long lastTick = lastDischargeTick.getOrDefault(uuid, 0L);
+        if (now - lastTick < tickRate) return;
+        lastDischargeTick.put(uuid, now);
 
-        float range = MIN_RANGE + (MAX_RANGE - MIN_RANGE) * scaled;
-        float damage = MIN_DAMAGE + (MAX_DAMAGE - MIN_DAMAGE) * scaled;
-        int particleCount = (int) (MIN_PARTICLES + (MAX_PARTICLES - MIN_PARTICLES) * scaled);
+        // Drain charge while discharging
+        float drainPerTick = 1.0f; // ~100 ticks (~5 seconds) to fully drain from 100
+        chargeMap.put(uuid, Math.max(0, charge - drainPerTick));
 
-        // Main burst
-        doElectricBurst(player, level, range, damage, particleCount, true);
+        double radius = blueduck.compound_v.Config.powerplexDischargeRadius;
+        float damage = (float) blueduck.compound_v.Config.powerplexDischargeDamage;
 
-        // Lingering pulses at >50% charge
-        if (percent > 0.50f) {
-            float lingerPercent = (percent - 0.50f) / 0.50f; // 0..1 over the top half
-            int lingerTicks = (int) (20 + 60 * lingerPercent); // 1–4 seconds
-            int tickInterval = Math.max(5, (int) (15 - 10 * lingerPercent)); // pulse every 5–15 ticks
-            float pulseDamage = damage * (0.15f + 0.15f * lingerPercent); // 15–30% of burst damage
+        // Scale damage by current charge level
+        damage *= percent;
 
-            lingeringMap.put(uuid, new LingeringDischarge(
-                    lingerTicks, tickInterval, pulseDamage, range, particleCount));
-        }
-    }
+        int chargeDisplay = (int) (getChargePercent(uuid) * 100);
+        player.displayClientMessage(
+                net.minecraft.network.chat.Component.literal("§c§lDischarging... §6" + chargeDisplay + "%"), true);
 
-    // ---- Burst logic ----
-
-    private void doElectricBurst(ServerPlayer player, ServerLevel level,
-                                 float range, float damage, int particleCount, boolean playSound) {
-        BlockPos blockpos = player.blockPosition();
-        AABB aabb = (new AABB(blockpos)).inflate(range);
-        List<LivingEntity> nearbyEntities = level.getEntitiesOfClass(LivingEntity.class, aabb);
-
-        for (LivingEntity target : nearbyEntities) {
-            if (target == player) continue;
-            if (!target.isAlive() || target.isRemoved()) continue;
-            double dist = player.distanceTo(target);
-            if (dist > range) continue;
-
-            // Damage falls off: 100% at center, 50% at max range
-            float falloff = 1.0f - (float) (dist / range) * 0.5f;
-            target.hurt(player.damageSources().indirectMagic(player, player), damage * falloff);
-
-            // Sparks on each hit entity
-            level.sendParticles(ParticleTypes.ELECTRIC_SPARK,
-                    target.getX(), target.getY() + target.getBbHeight() / 2, target.getZ(),
-                    8, 0.3, 0.4, 0.3, 0.1);
-        }
-
-        // Central burst — electric sparks radiating outward
+        // Electric sparks around the player
         level.sendParticles(ParticleTypes.ELECTRIC_SPARK,
-                player.getX(), player.getY() + 1.0, player.getZ(),
-                particleCount, range * 0.4, range * 0.3, range * 0.4, 0.15);
+                player.getX(), player.getY() + player.getBbHeight() * 0.5, player.getZ(),
+                (int) (8 + 12 * percent), radius * 0.3, 0.5, radius * 0.3, 0.15);
 
-        // Flash at player
-        level.sendParticles(ParticleTypes.FLASH,
-                player.getX(), player.getY() + 1.0, player.getZ(),
-                1, 0.0, 0.0, 0.0, 0.0);
+        level.playSound(null, player.getX(), player.getY(), player.getZ(),
+                SoundEvents.LIGHTNING_BOLT_IMPACT, SoundSource.PLAYERS, 0.3F, 1.5F);
 
-        // Soul fire at feet
-        level.sendParticles(ParticleTypes.SOUL_FIRE_FLAME,
-                player.getX(), player.getY() + 0.2, player.getZ(),
-                (int) (particleCount * 0.3), range * 0.15, 0.1, range * 0.15, 0.05);
+        // Damage all living entities in radius
+        AABB searchBox = player.getBoundingBox().inflate(radius);
+        net.minecraft.world.damagesource.DamageSource source = player.damageSources().playerAttack(player);
 
-        if (playSound) {
-            float volume = 0.5f + (particleCount / (float) MAX_PARTICLES) * 1.5f;
-            level.playSound(null, player.getX(), player.getY(), player.getZ(),
-                    SoundEvents.LIGHTNING_BOLT_THUNDER, SoundSource.PLAYERS, volume, 0.8F);
-            level.playSound(null, player.getX(), player.getY(), player.getZ(),
-                    SoundEvents.LIGHTNING_BOLT_IMPACT, SoundSource.PLAYERS, volume * 0.7f, 1.2F);
+        for (net.minecraft.world.entity.Entity e : level.getEntities(player, searchBox,
+                ent -> ent instanceof LivingEntity && ent.isAlive() && ent != player)) {
+            LivingEntity target = (LivingEntity) e;
+            double dist = target.distanceTo(player);
+            if (dist > radius) continue;
+
+            // Zero invulnerableTime BEFORE dealing damage — eliminates I-frames, stun-locks mobs
+            target.invulnerableTime = 0;
+            target.hurt(source, damage);
+
+            level.sendParticles(ParticleTypes.ELECTRIC_SPARK,
+                    target.getX(), target.getY() + target.getBbHeight() * 0.5, target.getZ(),
+                    3, 0.2, 0.2, 0.2, 0.05);
         }
     }
 
@@ -210,29 +176,11 @@ public class PowerAbsorptionEffect extends CompoundVEffect {
 
     @Override
     public double getStrengthMultiplier(int amplifier) {
-        return super.getStrengthMultiplier(amplifier) * 1.75; // Energy absorption amplifies melee output
+        return super.getStrengthMultiplier(amplifier) * 1.75;
     }
 
     @Override
     public double getDamageReduction(int amplifier) {
-        return super.getDamageReduction(amplifier) * 0.8; // Absorbs some incoming damage as energy
-    }
-
-    // ---- Internal ----
-
-    private static class LingeringDischarge {
-        int ticksRemaining;
-        final int tickInterval;
-        final float damagePerPulse;
-        final float range;
-        final int initialParticles;
-
-        LingeringDischarge(int ticks, int interval, float damage, float range, int particles) {
-            this.ticksRemaining = ticks;
-            this.tickInterval = interval;
-            this.damagePerPulse = damage;
-            this.range = range;
-            this.initialParticles = particles;
-        }
+        return super.getDamageReduction(amplifier) * 0.8;
     }
 }

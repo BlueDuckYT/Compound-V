@@ -13,8 +13,15 @@ public class AtomChargingEffect extends CompoundVEffect {
         super(category);
     }
 
+
+    @Override
+    public PowerType getPowerType() {
+        return PowerType.ACTIVE;
+    }
+
     public void applyEffectTick(LivingEntity entity, int amplifier) {
         super.applyEffectTick(entity, amplifier);
+        if (CompoundVEffect.arePowersSuppressed(entity)) return;
         if (entity.hasEffect(EffectReg.CHARGING.get()) || !(entity instanceof Player)) {
             entity.addEffect(new MobEffectInstance(EffectReg.CHARGING.get(), 200, amplifier));
         }

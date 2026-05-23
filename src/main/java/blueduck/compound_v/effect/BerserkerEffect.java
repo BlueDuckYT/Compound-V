@@ -43,6 +43,7 @@ public class BerserkerEffect extends CompoundVEffect {
         super(category);
     }
 
+
     /**
      * Returns the damage multiplier based on the entity's current health percentage.
      * Used by ForgeEvents to scale outgoing damage.
@@ -58,6 +59,7 @@ public class BerserkerEffect extends CompoundVEffect {
     @Override
     public void applyEffectTick(LivingEntity entity, int amplifier) {
         super.applyEffectTick(entity, amplifier);
+        if (CompoundVEffect.arePowersSuppressed(entity)) return;
         if (!(entity instanceof ServerPlayer player)) return;
         ServerLevel level = player.serverLevel();
 

@@ -6,6 +6,7 @@ import blueduck.compound_v.keybinds.PacketHandler;
 import blueduck.compound_v.registry.EffectReg;
 import blueduck.compound_v.registry.EntityReg;
 import blueduck.compound_v.registry.ItemReg;
+import blueduck.compound_v.registry.LootModifierReg;
 import com.mojang.logging.LogUtils;
 import net.minecraft.client.renderer.entity.ThrownItemRenderer;
 import net.minecraft.client.renderer.entity.player.PlayerRenderer;
@@ -39,6 +40,7 @@ public class CompoundVMod {
         ItemReg.ITEMS.register(modEventBus);
         EffectReg.EFFECTS.register(modEventBus);
         EntityReg.ENTITIES.register(modEventBus);
+        LootModifierReg.LOOT_MODIFIERS.register(modEventBus);
 
         MinecraftForge.EVENT_BUS.register(this);
 
@@ -90,6 +92,7 @@ public class CompoundVMod {
                 if (renderer instanceof PlayerRenderer playerRenderer) {
                     playerRenderer.addLayer(new DensityRenderLayer(playerRenderer));
                     playerRenderer.addLayer(new blueduck.compound_v.client.StarPowerRenderLayer(playerRenderer));
+                    playerRenderer.addLayer(new blueduck.compound_v.client.ForcefieldRenderLayer(playerRenderer));
                 }
             }
         }

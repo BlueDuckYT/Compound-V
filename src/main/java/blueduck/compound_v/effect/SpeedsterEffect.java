@@ -41,27 +41,45 @@ public class SpeedsterEffect extends CompoundVEffect {
         super(category);
     }
 
+    // Speedster tiers like Generic: level 1=D, 2=C, 3=B, 4=A, 5=S
+    private static final PowerTier[] LEVEL_TO_TIER = {
+            PowerTier.D, PowerTier.C, PowerTier.B, PowerTier.A, PowerTier.S
+    };
 
-    @Override
-    public PowerType getPowerType() {
-        return PowerType.ACTIVE;
+    private static PowerTier tierForAmplifier(int amplifier) {
+        if (amplifier < 0) return PowerTier.D;
+        if (amplifier >= LEVEL_TO_TIER.length) return PowerTier.S;
+        return LEVEL_TO_TIER[amplifier];
     }
 
-    // Speedster has no passive melee strength bonus — damage comes from sprint attacks instead
+    @Override
+    public double getDamageReduction(int amplifier) {
+        return tierForAmplifier(amplifier).getDamageReduction(0);
+    }
+
     @Override
     public double getStrengthMultiplier(int amplifier) {
-        return 1.0;
+        return tierForAmplifier(amplifier).getStrengthMultiplier(0);
+    }
+
+    @Override
+    public double getKnockbackReduction(int amplifier) {
+        return tierForAmplifier(amplifier).getKnockbackReduction(0);
+    }
+
+    @Override
+    public double getKnockbackDealtMultiplier(int amplifier) {
+        return tierForAmplifier(amplifier).getKnockbackDealtMultiplier(0);
     }
 
     public void applyEffectTick(LivingEntity entity, int amplifier) {
         super.applyEffectTick(entity, amplifier);
-        if (CompoundVEffect.arePowersSuppressed(entity)) return;
 
         boolean hasSpeedEffects = entity.hasEffect(MobEffects.MOVEMENT_SPEED) && entity.hasEffect(MobEffects.DIG_SPEED);
         if (hasSpeedEffects || !(entity instanceof Player)) {
             // Speed levels: amp 0 = Speed III, amp 1 = Speed V, amp 2 = Speed VII, amp 3 = Speed IX
             // Much faster than before — Speedster should FEEL fast
-            entity.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SPEED, 200, 2 + amplifier * 2));
+            entity.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SPEED, 200, 2 + amplifier * Config.speedsterSpeedLevelsPerAmp));
             entity.addEffect(new MobEffectInstance(MobEffects.DIG_SPEED, 200, 1 + amplifier));
 
             // Step height boost — walk up 1 block without jumping
@@ -170,7 +188,7 @@ public class SpeedsterEffect extends CompoundVEffect {
             player.removeEffect(MobEffects.MOVEMENT_SPEED);
             player.removeEffect(MobEffects.DIG_SPEED);
         } else {
-            player.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SPEED, 200, amplifier * 2));
+            player.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SPEED, 200, amplifier * Config.speedsterSpeedLevelsPerAmp));
             player.addEffect(new MobEffectInstance(MobEffects.DIG_SPEED, 200, amplifier));
 
             level.sendParticles(ParticleTypes.ELECTRIC_SPARK,

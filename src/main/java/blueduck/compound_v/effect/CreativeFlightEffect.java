@@ -20,12 +20,6 @@ public class CreativeFlightEffect extends CompoundVEffect {
         super(category);
     }
 
-
-    @Override
-    public PowerType getPowerType() {
-        return PowerType.PASSIVE;
-    }
-
     @Override
     public void applyEffectTick(LivingEntity entity, int amplifier) {
         super.applyEffectTick(entity, amplifier);
@@ -44,9 +38,11 @@ public class CreativeFlightEffect extends CompoundVEffect {
             if (player.getAbilities().flying) {
                 double speed = entity.getDeltaMovement().length();
                 if (speed > 0.05) {
+                    // Cloud puff trail
                     serverLevel.sendParticles(ParticleTypes.CLOUD,
                             entity.getX(), entity.getY(), entity.getZ(),
                             (int) (1 + speed * 3), 0.3, 0.1, 0.3, 0.01);
+                    // White wind streaks
                     serverLevel.sendParticles(WIND_PARTICLE,
                             entity.getX(), entity.getY() + 0.5, entity.getZ(),
                             (int) (2 + speed * 4), 0.4, 0.3, 0.4, 0.05);
@@ -54,6 +50,8 @@ public class CreativeFlightEffect extends CompoundVEffect {
             }
         }
     }
+
+
 
     @Override
     public void removeAttributeModifiers(LivingEntity entity, net.minecraft.world.entity.ai.attributes.AttributeMap attributeMap, int amplifier) {

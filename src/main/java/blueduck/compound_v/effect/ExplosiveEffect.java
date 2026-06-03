@@ -39,7 +39,6 @@ public class ExplosiveEffect extends CompoundVEffect {
         super(category);
     }
 
-
     @Override
     public PowerType getPowerType() {
         return PowerType.ACTIVE;

@@ -175,60 +175,38 @@ public class MobPowerManager {
         List<WeightedPower> eligible = getEligiblePowers(mob);
         if (eligible.isEmpty()) return;
 
-        // Determine how many powers to roll
-        int powerCount = 1;
-        if (Config.mobEnableMultiPowers) {
-            powerCount = 1 + mob.getRandom().nextInt(Config.mobMultiPowerMaxCount);
+        // Weighted random selection
+        int totalWeight = 0;
+        for (WeightedPower wp : eligible) {
+            totalWeight += wp.weight();
+        }
+        int roll = mob.getRandom().nextInt(totalWeight);
+        WeightedPower chosen = null;
+        int cumulative = 0;
+        for (WeightedPower wp : eligible) {
+            cumulative += wp.weight();
+            if (roll < cumulative) {
+                chosen = wp;
+                break;
+            }
+        }
+        if (chosen == null) return;
+
+        // Roll amplifier within the power's configured range
+        int amp = chosen.minAmp();
+        if (chosen.maxAmp() > chosen.minAmp()) {
+            amp += mob.getRandom().nextInt(chosen.maxAmp() - chosen.minAmp() + 1);
         }
 
-        java.util.Set<net.minecraft.world.effect.MobEffect> rolledEffects = new java.util.HashSet<>();
-        int attempts = 0;
-        int maxAttempts = powerCount * 30;
-
-        while (rolledEffects.size() < powerCount && attempts < maxAttempts) {
-            attempts++;
-
-            // Weighted random selection
-            int totalWeight = 0;
-            for (WeightedPower wp : eligible) {
-                totalWeight += wp.weight();
-            }
-            if (totalWeight <= 0) break;
-
-            int roll = mob.getRandom().nextInt(totalWeight);
-            WeightedPower chosen = null;
-            int cumulative = 0;
-            for (WeightedPower wp : eligible) {
-                cumulative += wp.weight();
-                if (roll < cumulative) {
-                    chosen = wp;
-                    break;
-                }
-            }
-            if (chosen == null) break;
-            if (rolledEffects.contains(chosen.power().get())) continue;
-
-            rolledEffects.add(chosen.power().get());
-
-            // Roll amplifier
-            int amp = chosen.minAmp();
-            if (chosen.maxAmp() > chosen.minAmp()) {
-                amp += mob.getRandom().nextInt(chosen.maxAmp() - chosen.minAmp() + 1);
-            }
-
-            MobEffectInstance effect = new MobEffectInstance(
-                    chosen.power().get(), MobEffectInstance.INFINITE_DURATION, amp, false, false, false);
-            effect.setCurativeItems(new java.util.ArrayList<>());
-            mob.addEffect(effect);
-        }
-
-        if (rolledEffects.isEmpty()) return;
-
+        // Apply infinite-duration effect (no particles, no icon — the blue sparkles replace those)
+        MobEffectInstance effect = new MobEffectInstance(
+                chosen.power().get(), MobEffectInstance.INFINITE_DURATION, amp, false, false, false);
+        mob.addEffect(effect);
         mob.getPersistentData().putBoolean(POWERED_TAG, true);
         mob.getPersistentData().putBoolean(NATURAL_TAG, true);
 
         // If the mob got laser eyes, roll a species-dependent laser color and store it
-        if (mob.hasEffect(EffectReg.LASER_EYES_BASIC.get())) {
+        if (chosen.power() == EffectReg.LASER_EYES_BASIC) {
             int color = rollLaserColor(mob);
             mob.getPersistentData().putInt(LASER_COLOR_TAG, color);
         }
@@ -278,6 +256,11 @@ public class MobPowerManager {
      * (Constants defined in S2CLaserSyncPacket)
      */
     public static int rollLaserColor(Mob mob) {
+        // Rare rainbow chance for any mob (1/500)
+        if (mob.getRandom().nextInt(500) == 0) {
+            return S2CLaserSyncPacket.COLOR_RAINBOW;
+        }
+
         float roll = mob.getRandom().nextFloat();
 
         // Enderman: always purple
@@ -587,18 +570,12 @@ public class MobPowerManager {
         if (mob.getPersistentData().getBoolean("compound_v_petrified")) return;
         // Virus / nullification field suppresses all powers
         if (CompoundVEffect.arePowersSuppressed(mob)) {
-            // Restore gravity for flying mobs
-            if (mob.isNoGravity() && mob.hasEffect(EffectReg.CREATIVE_FLIGHT.get())) {
-                mob.setNoGravity(false);
-            }
-            // Strip vanilla effects granted by Compound V powers
+            if (mob.isNoGravity() && mob.hasEffect(EffectReg.CREATIVE_FLIGHT.get())) mob.setNoGravity(false);
             if (mob.hasEffect(EffectReg.SPEEDSTER.get())) {
                 mob.removeEffect(net.minecraft.world.effect.MobEffects.MOVEMENT_SPEED);
                 mob.removeEffect(net.minecraft.world.effect.MobEffects.DIG_SPEED);
             }
-            if (mob.hasEffect(EffectReg.INVISIBILITY.get())) {
-                mob.removeEffect(net.minecraft.world.effect.MobEffects.INVISIBILITY);
-            }
+            if (mob.hasEffect(EffectReg.INVISIBILITY.get())) mob.removeEffect(net.minecraft.world.effect.MobEffects.INVISIBILITY);
             return;
         }
 
@@ -1544,18 +1521,15 @@ public class MobPowerManager {
                 effectiveRange = MOB_CHEST_BLAST_RANGE;
             }
 
-            // Send rendered beam
             PacketHandler.sendToTrackingAndSelf(
                     new S2CLaserSyncPacket(mob.getId(), hitPos.x, hitPos.y, hitPos.z,
                             S2CLaserSyncPacket.COLOR_CHEST_BLAST),
                     mob);
 
-            // Chest glow
             level.sendParticles(MOB_BLAST_CORE,
                     mob.getX(), chestY, mob.getZ(),
                     2, 0.15, 0.1, 0.15, 0.01);
 
-            // Damage entities in the beam cone — only up to the wall hit
             AABB searchBox = mob.getBoundingBox().inflate(effectiveRange);
             for (net.minecraft.world.entity.Entity e : level.getEntities(mob, searchBox,
                     ent -> ent instanceof LivingEntity && ent.isAlive() && ent != mob)) {
@@ -1583,9 +1557,7 @@ public class MobPowerManager {
                             break;
                         }
                     }
-                    // Shield blocks the strip if configured
-                    boolean shieldBlocking = Config.chestBlastShieldBlocksStrip
-                            && beamTarget.isBlocking();
+                    boolean shieldBlocking = Config.chestBlastShieldBlocksStrip && beamTarget.isBlocking();
                     if (hasCompV && !shieldBlocking) {
                         blueduck.compound_v.item.AntiVItem.stripCompoundVEffects(beamTarget);
                         // Knockback away from beam
@@ -1599,7 +1571,6 @@ public class MobPowerManager {
                         level.playSound(null, beamTarget.getX(), beamTarget.getY(), beamTarget.getZ(),
                                 SoundEvents.BEACON_DEACTIVATE, SoundSource.HOSTILE, 1.0F, 0.5F);
                     } else if (hasCompV && shieldBlocking && beamTarget.tickCount % 10 == 0) {
-                        // Shield blocks the strip — periodic sparks
                         level.sendParticles(ParticleTypes.ELECTRIC_SPARK,
                                 beamTarget.getX(), beamTarget.getY() + beamTarget.getBbHeight() * 0.5, beamTarget.getZ(),
                                 10, 0.3, 0.4, 0.3, 0.1);

@@ -26,6 +26,7 @@ public class S2CLaserSyncPacket {
     public static final int COLOR_PURPLE = 4;
     public static final int COLOR_YELLOW = 5;
     public static final int COLOR_CHEST_BLAST = 6;
+    public static final int COLOR_RAINBOW = 7;
 
     private final int entityId;
     private final double hitX, hitY, hitZ;

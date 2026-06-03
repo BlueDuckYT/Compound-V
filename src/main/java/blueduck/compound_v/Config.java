@@ -48,36 +48,15 @@ public class Config {
             .defineInRange("tempVBadReactionChance", 0.0, 0, 1);
 
     // --- Multi-Power ---
-    private static final ForgeConfigSpec.BooleanValue ENABLE_MULTI_POWERS = BUILDER
-            .comment("Allow Compound V to grant multiple powers at once (1 to multiPowerMaxCount)")
-            .define("enableMultiPowers", false);
-    private static final ForgeConfigSpec.IntValue MULTI_POWER_MAX_COUNT = BUILDER
-            .comment("Maximum number of powers rolled when taking Compound V (randomly 1 to this value)")
-            .defineInRange("multiPowerMaxCount", 2, 1, 3);
-    private static final ForgeConfigSpec.BooleanValue TEMP_V_ENABLE_MULTI_POWERS = BUILDER
-            .comment("Allow Temp V to grant multiple powers at once (separate from permanent Compound V)")
-            .define("tempVEnableMultiPowers", false);
-    private static final ForgeConfigSpec.IntValue TEMP_V_MULTI_POWER_MAX_COUNT = BUILDER
-            .comment("Maximum number of powers rolled when taking Temp V (randomly 1 to this value)")
-            .defineInRange("tempVMultiPowerMaxCount", 2, 1, 3);
-    private static final ForgeConfigSpec.BooleanValue MOB_ENABLE_MULTI_POWERS = BUILDER
-            .comment("Allow mobs to spawn with multiple powers at once")
-            .define("mobEnableMultiPowers", false);
-    private static final ForgeConfigSpec.IntValue MOB_MULTI_POWER_MAX_COUNT = BUILDER
-            .comment("Maximum number of powers a mob can spawn with (randomly 1 to this value)")
-            .defineInRange("mobMultiPowerMaxCount", 2, 1, 3);
+    private static final ForgeConfigSpec.BooleanValue ENABLE_MULTI_POWERS = BUILDER.comment("Allow Compound V to grant multiple powers").define("enableMultiPowers", false);
+    private static final ForgeConfigSpec.IntValue MULTI_POWER_MAX_COUNT = BUILDER.defineInRange("multiPowerMaxCount", 2, 1, 3);
+    private static final ForgeConfigSpec.BooleanValue TEMP_V_ENABLE_MULTI_POWERS = BUILDER.define("tempVEnableMultiPowers", false);
+    private static final ForgeConfigSpec.IntValue TEMP_V_MULTI_POWER_MAX_COUNT = BUILDER.defineInRange("tempVMultiPowerMaxCount", 2, 1, 3);
+    private static final ForgeConfigSpec.BooleanValue MOB_ENABLE_MULTI_POWERS = BUILDER.define("mobEnableMultiPowers", false);
+    private static final ForgeConfigSpec.IntValue MOB_MULTI_POWER_MAX_COUNT = BUILDER.defineInRange("mobMultiPowerMaxCount", 2, 1, 3);
 
-    // --- Combat ---
-    // --- Player Stat Tiers ---
-    // Each tier has base + perLevel for damage reduction, strength, and knockback
-    // Formula: stat = base + (amplifier * perLevel)
-    // Damage reduction: lower = tankier. Strength: higher = stronger. Knockback: lower = less knockback.
-
-    private static final ForgeConfigSpec.ConfigValue<String> DEFAULT_POWER_TIER = BUILDER
-            .comment("Default tier for powers that don't have a specific config. Valid: S, A, B, C, D")
-            .define("defaultPowerTier", "C");
-
-    // Per-power tier overrides (set to tier letter: S, A, B, C, D)
+    // --- Tier System ---
+    private static final ForgeConfigSpec.ConfigValue<String> DEFAULT_POWER_TIER = BUILDER.comment("Default tier. Valid: S, A, B, C, D").define("defaultPowerTier", "C");
     private static final ForgeConfigSpec.ConfigValue<String> TIER_GENERIC = BUILDER.define("tierOf.generic", "SPECIAL");
     private static final ForgeConfigSpec.ConfigValue<String> TIER_STORMFRONT = BUILDER.define("tierOf.stormfront", "S");
     private static final ForgeConfigSpec.ConfigValue<String> TIER_INSTAKILL = BUILDER.define("tierOf.instakill", "S");
@@ -90,7 +69,7 @@ public class Config {
     private static final ForgeConfigSpec.ConfigValue<String> TIER_LASER_BASIC = BUILDER.define("tierOf.laser_basic", "B");
     private static final ForgeConfigSpec.ConfigValue<String> TIER_LEAP = BUILDER.define("tierOf.leap", "B");
     private static final ForgeConfigSpec.ConfigValue<String> TIER_TELEPORT = BUILDER.define("tierOf.teleport", "B");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_SPEEDSTER = BUILDER.define("tierOf.speedster", "A");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_SPEEDSTER = BUILDER.define("tierOf.speedster", "SPECIAL");
     private static final ForgeConfigSpec.ConfigValue<String> TIER_BERSERKER = BUILDER.define("tierOf.berserker", "B");
     private static final ForgeConfigSpec.ConfigValue<String> TIER_HEALING = BUILDER.define("tierOf.healing", "B");
     private static final ForgeConfigSpec.ConfigValue<String> TIER_EXPLOSIVE = BUILDER.define("tierOf.explosive", "B");
@@ -114,45 +93,59 @@ public class Config {
     private static final ForgeConfigSpec.ConfigValue<String> TIER_FORCEFIELD = BUILDER.define("tierOf.forcefield", "D");
     private static final ForgeConfigSpec.ConfigValue<String> TIER_SPIDER = BUILDER.define("tierOf.spider", "D");
 
-    // Tier S — top-tier (Stormfront, Star Power, Instakill, Chest Blast)
+    // Tier SP — legendary (no powers by default, custom assignable)
+    private static final ForgeConfigSpec.DoubleValue TIER_SP_DR = BUILDER.defineInRange("tierSP.damageReduction", 0.15, 0, 5);
+    private static final ForgeConfigSpec.DoubleValue TIER_SP_DR_PL = BUILDER.defineInRange("tierSP.damageReductionPerLevel", -0.03, -5, 5);
+    private static final ForgeConfigSpec.DoubleValue TIER_SP_STR = BUILDER.defineInRange("tierSP.strengthMultiplier", 3.0, 0, 50);
+    private static final ForgeConfigSpec.DoubleValue TIER_SP_STR_PL = BUILDER.defineInRange("tierSP.strengthPerLevel", 0.75, -10, 10);
+    private static final ForgeConfigSpec.DoubleValue TIER_SP_KB = BUILDER.defineInRange("tierSP.knockbackReduction", 0.15, 0, 5);
+    private static final ForgeConfigSpec.DoubleValue TIER_SP_KB_PL = BUILDER.defineInRange("tierSP.knockbackPerLevel", -0.03, -5, 5);
+    private static final ForgeConfigSpec.DoubleValue TIER_SP_KBD = BUILDER.defineInRange("tierSP.knockbackDealt", 2.5, 0, 20);
+    private static final ForgeConfigSpec.DoubleValue TIER_SP_KBD_PL = BUILDER.defineInRange("tierSP.knockbackDealtPerLevel", 0.5, -10, 10);
+
+    // Tier S
     private static final ForgeConfigSpec.DoubleValue TIER_S_DR = BUILDER.defineInRange("tierS.damageReduction", 0.3, 0, 5);
     private static final ForgeConfigSpec.DoubleValue TIER_S_DR_PL = BUILDER.defineInRange("tierS.damageReductionPerLevel", -0.05, -5, 5);
     private static final ForgeConfigSpec.DoubleValue TIER_S_STR = BUILDER.defineInRange("tierS.strengthMultiplier", 2.0, 0, 50);
     private static final ForgeConfigSpec.DoubleValue TIER_S_STR_PL = BUILDER.defineInRange("tierS.strengthPerLevel", 0.5, -10, 10);
     private static final ForgeConfigSpec.DoubleValue TIER_S_KB = BUILDER.defineInRange("tierS.knockbackReduction", 0.3, 0, 5);
     private static final ForgeConfigSpec.DoubleValue TIER_S_KB_PL = BUILDER.defineInRange("tierS.knockbackPerLevel", -0.05, -5, 5);
-
-    // Tier A — high-tier (Laser Advanced, Invincible, PowerAbsorption, Explosive, Petrifying Gaze)
+    private static final ForgeConfigSpec.DoubleValue TIER_S_KBD = BUILDER.defineInRange("tierS.knockbackDealt", 2.0, 0, 20);
+    private static final ForgeConfigSpec.DoubleValue TIER_S_KBD_PL = BUILDER.defineInRange("tierS.knockbackDealtPerLevel", 0.3, -10, 10);
     private static final ForgeConfigSpec.DoubleValue TIER_A_DR = BUILDER.defineInRange("tierA.damageReduction", 0.4, 0, 5);
     private static final ForgeConfigSpec.DoubleValue TIER_A_DR_PL = BUILDER.defineInRange("tierA.damageReductionPerLevel", -0.04, -5, 5);
     private static final ForgeConfigSpec.DoubleValue TIER_A_STR = BUILDER.defineInRange("tierA.strengthMultiplier", 1.75, 0, 50);
     private static final ForgeConfigSpec.DoubleValue TIER_A_STR_PL = BUILDER.defineInRange("tierA.strengthPerLevel", 0.35, -10, 10);
     private static final ForgeConfigSpec.DoubleValue TIER_A_KB = BUILDER.defineInRange("tierA.knockbackReduction", 0.4, 0, 5);
     private static final ForgeConfigSpec.DoubleValue TIER_A_KB_PL = BUILDER.defineInRange("tierA.knockbackPerLevel", -0.04, -5, 5);
-
-    // Tier B — mid-tier (Laser Basic, Leap, Teleport, Speedster, Berserker, Healing)
+    private static final ForgeConfigSpec.DoubleValue TIER_A_KBD = BUILDER.defineInRange("tierA.knockbackDealt", 1.75, 0, 20);
+    private static final ForgeConfigSpec.DoubleValue TIER_A_KBD_PL = BUILDER.defineInRange("tierA.knockbackDealtPerLevel", 0.2, -10, 10);
     private static final ForgeConfigSpec.DoubleValue TIER_B_DR = BUILDER.defineInRange("tierB.damageReduction", 0.5, 0, 5);
     private static final ForgeConfigSpec.DoubleValue TIER_B_DR_PL = BUILDER.defineInRange("tierB.damageReductionPerLevel", -0.03, -5, 5);
     private static final ForgeConfigSpec.DoubleValue TIER_B_STR = BUILDER.defineInRange("tierB.strengthMultiplier", 1.5, 0, 50);
     private static final ForgeConfigSpec.DoubleValue TIER_B_STR_PL = BUILDER.defineInRange("tierB.strengthPerLevel", 0.25, -10, 10);
     private static final ForgeConfigSpec.DoubleValue TIER_B_KB = BUILDER.defineInRange("tierB.knockbackReduction", 0.5, 0, 5);
     private static final ForgeConfigSpec.DoubleValue TIER_B_KB_PL = BUILDER.defineInRange("tierB.knockbackPerLevel", -0.03, -5, 5);
-
-    // Tier C — low-tier (Flight, EnhancedRegen, NightVision, Invisibility, Deep, Density, Enlarge, Shrink)
+    private static final ForgeConfigSpec.DoubleValue TIER_B_KBD = BUILDER.defineInRange("tierB.knockbackDealt", 1.5, 0, 20);
+    private static final ForgeConfigSpec.DoubleValue TIER_B_KBD_PL = BUILDER.defineInRange("tierB.knockbackDealtPerLevel", 0.15, -10, 10);
     private static final ForgeConfigSpec.DoubleValue TIER_C_DR = BUILDER.defineInRange("tierC.damageReduction", 0.65, 0, 5);
     private static final ForgeConfigSpec.DoubleValue TIER_C_DR_PL = BUILDER.defineInRange("tierC.damageReductionPerLevel", -0.02, -5, 5);
     private static final ForgeConfigSpec.DoubleValue TIER_C_STR = BUILDER.defineInRange("tierC.strengthMultiplier", 1.25, 0, 50);
     private static final ForgeConfigSpec.DoubleValue TIER_C_STR_PL = BUILDER.defineInRange("tierC.strengthPerLevel", 0.15, -10, 10);
     private static final ForgeConfigSpec.DoubleValue TIER_C_KB = BUILDER.defineInRange("tierC.knockbackReduction", 0.65, 0, 5);
     private static final ForgeConfigSpec.DoubleValue TIER_C_KB_PL = BUILDER.defineInRange("tierC.knockbackPerLevel", -0.02, -5, 5);
-
-    // Tier D — utility (Luck, Levitation, Mimic, Rex Splode, Sonic Scream, etc.)
+    private static final ForgeConfigSpec.DoubleValue TIER_C_KBD = BUILDER.defineInRange("tierC.knockbackDealt", 1.25, 0, 20);
+    private static final ForgeConfigSpec.DoubleValue TIER_C_KBD_PL = BUILDER.defineInRange("tierC.knockbackDealtPerLevel", 0.1, -10, 10);
     private static final ForgeConfigSpec.DoubleValue TIER_D_DR = BUILDER.defineInRange("tierD.damageReduction", 0.8, 0, 5);
     private static final ForgeConfigSpec.DoubleValue TIER_D_DR_PL = BUILDER.defineInRange("tierD.damageReductionPerLevel", -0.01, -5, 5);
     private static final ForgeConfigSpec.DoubleValue TIER_D_STR = BUILDER.defineInRange("tierD.strengthMultiplier", 1.1, 0, 50);
     private static final ForgeConfigSpec.DoubleValue TIER_D_STR_PL = BUILDER.defineInRange("tierD.strengthPerLevel", 0.05, -10, 10);
     private static final ForgeConfigSpec.DoubleValue TIER_D_KB = BUILDER.defineInRange("tierD.knockbackReduction", 0.8, 0, 5);
     private static final ForgeConfigSpec.DoubleValue TIER_D_KB_PL = BUILDER.defineInRange("tierD.knockbackPerLevel", -0.01, -5, 5);
+    private static final ForgeConfigSpec.DoubleValue TIER_D_KBD = BUILDER.defineInRange("tierD.knockbackDealt", 1.1, 0, 20);
+    private static final ForgeConfigSpec.DoubleValue TIER_D_KBD_PL = BUILDER.defineInRange("tierD.knockbackDealtPerLevel", 0.05, -10, 10);
+
+    // --- Combat ---
 
     // --- Effect Weights ---
     private static final ForgeConfigSpec.IntValue WEIGHT_GENERIC = BUILDER
@@ -164,6 +157,9 @@ public class Config {
     private static final ForgeConfigSpec.BooleanValue SPEEDSTER_SPEED_ATTACK = BUILDER
             .comment("Whether Speedster powers allow you to damage mobs while sprinting")
             .define("speedster_speed_attack", true);
+    private static final ForgeConfigSpec.IntValue SPEEDSTER_SPEED_LEVELS_PER_AMP = BUILDER
+            .comment("Speed effect levels added per Speedster amplifier (base Speed III at amp 0, +N per amp)")
+            .defineInRange("speedsterSpeedLevelsPerAmp", 2, 0, 10);
     private static final ForgeConfigSpec.IntValue WEIGHT_WATER = BUILDER
             .comment("Weight of obtaining Water Powers when taking Compound V")
             .defineInRange("weight_water_power", 5, 0, Integer.MAX_VALUE);
@@ -173,6 +169,38 @@ public class Config {
     private static final ForgeConfigSpec.IntValue TELEPORT_RANGE = BUILDER
             .comment("Range of the teleportation power")
             .defineInRange("teleport_range", 36, 0, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.IntValue TELEPORT_COOLDOWN = BUILDER
+            .comment("Cooldown in ticks after teleporting (0 = no cooldown)")
+            .defineInRange("teleportCooldown", 0, 0, Integer.MAX_VALUE);
+    // --- Laser Pushback ---
+    private static final ForgeConfigSpec.BooleanValue LASER_BASIC_PUSH_ENABLED = BUILDER.define("laserBasicPushEnabled", true);
+    private static final ForgeConfigSpec.DoubleValue LASER_BASIC_PUSH_STRENGTH = BUILDER.defineInRange("laserBasicPushStrength", 0.02, 0.0, 1.0);
+    private static final ForgeConfigSpec.DoubleValue LASER_BASIC_SHIELD_PUSH_MULTIPLIER = BUILDER.defineInRange("laserBasicShieldPushMultiplier", 3.0, 0.0, 20.0);
+    private static final ForgeConfigSpec.BooleanValue LASER_ADVANCED_PUSH_ENABLED = BUILDER.define("laserAdvancedPushEnabled", true);
+    private static final ForgeConfigSpec.DoubleValue LASER_ADVANCED_PUSH_STRENGTH = BUILDER.defineInRange("laserAdvancedPushStrength", 0.04, 0.0, 1.0);
+    private static final ForgeConfigSpec.DoubleValue LASER_ADVANCED_SHIELD_PUSH_MULTIPLIER = BUILDER.defineInRange("laserAdvancedShieldPushMultiplier", 4.0, 0.0, 20.0);
+    private static final ForgeConfigSpec.IntValue LASER_BASIC_DAMAGE_TICK_RATE = BUILDER.defineInRange("laserBasicDamageTickRate", 1, 1, 40);
+    private static final ForgeConfigSpec.IntValue LASER_ADVANCED_DAMAGE_TICK_RATE = BUILDER.defineInRange("laserAdvancedDamageTickRate", 1, 1, 40);
+    // --- Laser Block Breaking ---
+    private static final ForgeConfigSpec.BooleanValue LASER_BASIC_BREAK_BLOCKS = BUILDER
+            .comment("Whether basic laser eyes break blocks along the beam (like chest blast)")
+            .define("laserBasicBreakBlocks", false);
+    private static final ForgeConfigSpec.BooleanValue LASER_ADVANCED_BREAK_BLOCKS = BUILDER
+            .comment("Whether advanced laser eyes break blocks along the beam")
+            .define("laserAdvancedBreakBlocks", true);
+    private static final ForgeConfigSpec.DoubleValue LASER_BLOCK_BREAK_CHANCE = BUILDER
+            .comment("Chance per block per tick for laser block breaking (lower = slower carving)")
+            .defineInRange("laserBlockBreakChance", 0.15, 0.0, 1.0);
+    private static final ForgeConfigSpec.BooleanValue LASER_BLOCK_BREAK_DROPS = BUILDER
+            .comment("Whether laser block breaking drops items (false = less lag)")
+            .define("laserBlockBreakDrops", false);
+    private static final ForgeConfigSpec.BooleanValue CHEST_BLAST_BLOCK_BREAK_DROPS = BUILDER
+            .comment("Whether chest blast block breaking drops items (false = less lag)")
+            .define("chestBlastBlockBreakDrops", false);
+    // --- Commands ---
+    private static final ForgeConfigSpec.BooleanValue LASER_COLOR_COMMAND_OP_ONLY = BUILDER
+            .comment("Restrict /lasercolor to operators only (even for setting your own color)")
+            .define("laserColorCommandOpOnly", true);
     private static final ForgeConfigSpec.IntValue WEIGHT_ATOM_CHARGING = BUILDER
             .comment("Weight of obtaining Atom Charging power when taking Compound V")
             .defineInRange("weight_atom_charging", 5, 0, Integer.MAX_VALUE);
@@ -221,12 +249,9 @@ public class Config {
             .comment("Weight of obtaining Density Manipulation when taking Compound V")
             .defineInRange("weight_density", 5, 0, Integer.MAX_VALUE);
     private static final ForgeConfigSpec.DoubleValue DENSITY_DAMAGE_REDUCTION = BUILDER
-            .comment("Damage multiplier of damage taken while on Compound V")
-            .defineInRange("damageReduction", 0.5, 0, 1);
-    // Spider — experimental, commented out
-    // private static final ForgeConfigSpec.IntValue WEIGHT_SPIDER = BUILDER
-    //         .comment("Weight of obtaining Spider powers when taking Compound V (Currently Disabled)")
-    //         .defineInRange("weight_spider", 5, 0, Integer.MAX_VALUE);
+            .comment("Damage multiplier when in Dense state (lower = more tanky)")
+            .defineInRange("densityDamageMultiplier", 0.5, 0, 1);
+
     private static final ForgeConfigSpec.IntValue WEIGHT_INSTAKILL = BUILDER
             .comment("Weight of obtaining Instakill power when taking Compound V")
             .defineInRange("weight_instakill", 1, 0, Integer.MAX_VALUE);
@@ -290,16 +315,29 @@ public class Config {
     private static final ForgeConfigSpec.BooleanValue STORMFRONT_IN_REGULAR_POOL = BUILDER
             .comment("Whether Stormfront can be obtained from regular Compound V (not just V1)")
             .define("stormfrontInRegularPool", false);
-    // Forcefield — experimental, commented out
-    // private static final ForgeConfigSpec.IntValue WEIGHT_FORCEFIELD = BUILDER
-    //         .comment("Weight of obtaining Forcefield when taking Compound V")
-    //         .defineInRange("weight_forcefield", 3, 0, Integer.MAX_VALUE);
+
     private static final ForgeConfigSpec.IntValue WEIGHT_LUCK = BUILDER
             .comment("Weight of obtaining Luck when taking Compound V (comes in 3 levels)")
             .defineInRange("weight_luck", 3, 0, Integer.MAX_VALUE);
+    // Spider/Forcefield commented out — experimental
+    // private static final ForgeConfigSpec.IntValue WEIGHT_SPIDER = ...
+    // private static final ForgeConfigSpec.IntValue WEIGHT_FORCEFIELD = ...
     private static final ForgeConfigSpec.IntValue WEIGHT_CHEST_BLAST = BUILDER
             .comment("Weight of obtaining Chest Blast (Soldier Boy) power from V1")
             .defineInRange("weight_chest_blast", 2, 0, Integer.MAX_VALUE);
+    // --- V1 Pool Weights ---
+    private static final ForgeConfigSpec.IntValue V1_WEIGHT_SPEEDSTER = BUILDER.defineInRange("v1_weight_speedster", 3, 0, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.IntValue V1_WEIGHT_LASER_ADVANCED = BUILDER.defineInRange("v1_weight_laser_advanced", 3, 0, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.IntValue V1_WEIGHT_HEAD_POP = BUILDER.defineInRange("v1_weight_head_pop", 3, 0, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.IntValue V1_WEIGHT_CREATIVE_FLIGHT = BUILDER.defineInRange("v1_weight_creative_flight", 2, 0, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.IntValue V1_WEIGHT_TELEPORT = BUILDER.defineInRange("v1_weight_teleport", 2, 0, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.IntValue V1_WEIGHT_MIND_CONTROL = BUILDER.defineInRange("v1_weight_mind_control", 2, 0, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.IntValue V1_WEIGHT_ENLARGE = BUILDER.defineInRange("v1_weight_enlarge", 2, 0, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.IntValue V1_WEIGHT_INSTAKILL = BUILDER.defineInRange("v1_weight_instakill", 1, 0, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.IntValue V1_WEIGHT_INVINCIBLE = BUILDER.defineInRange("v1_weight_invincible", 1, 0, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.IntValue V1_WEIGHT_STAR_POWER = BUILDER.defineInRange("v1_weight_star_power", 1, 0, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.IntValue V1_WEIGHT_CHEST_BLAST = BUILDER.defineInRange("v1_weight_chest_blast", 1, 0, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.IntValue V1_WEIGHT_STORMFRONT = BUILDER.defineInRange("v1_weight_stormfront", 2, 0, Integer.MAX_VALUE);
     private static final ForgeConfigSpec.DoubleValue CHEST_BLAST_BEAM_DAMAGE = BUILDER
             .comment("Damage per tick of the Chest Blast beam (fires 20x/sec, so 2.0 = 40 dps before armor)")
             .defineInRange("chestBlastBeamDamage", 3.0, 0, Double.MAX_VALUE);
@@ -318,65 +356,47 @@ public class Config {
     private static final ForgeConfigSpec.BooleanValue CHEST_BLAST_IN_REGULAR_POOL = BUILDER
             .comment("Whether Chest Blast can be obtained from regular Compound V (not just V1)")
             .define("chestBlastInRegularPool", false);
+    private static final ForgeConfigSpec.BooleanValue CHEST_BLAST_BLOCKED_BY_WALLS = BUILDER.define("chestBlastBlockedByWalls", true);
+    private static final ForgeConfigSpec.BooleanValue CHEST_BLAST_STRIPS_POWERS = BUILDER.define("chestBlastStripsPowers", true);
+    private static final ForgeConfigSpec.BooleanValue CHEST_BLAST_SHIELD_BLOCKS_STRIP = BUILDER.define("chestBlastShieldBlocksStrip", true);
+    // --- Chest Blast Nova (sneak + V) ---
+    private static final ForgeConfigSpec.DoubleValue CHEST_BLAST_NOVA_RADIUS = BUILDER
+            .comment("Radius of the Soldier Boy nova burst (sneak + V)")
+            .defineInRange("chestBlastNovaRadius", 8.0, 2.0, 32.0);
+    private static final ForgeConfigSpec.DoubleValue CHEST_BLAST_NOVA_DAMAGE = BUILDER
+            .comment("Damage dealt by the nova burst to powered entities")
+            .defineInRange("chestBlastNovaDamage", 15.0, 0.0, 100.0);
+    private static final ForgeConfigSpec.DoubleValue CHEST_BLAST_NOVA_KNOCKBACK = BUILDER
+            .comment("Knockback strength of the nova burst")
+            .defineInRange("chestBlastNovaKnockback", 2.5, 0.0, 10.0);
+    private static final ForgeConfigSpec.IntValue CHEST_BLAST_NOVA_CHARGE_TIME = BUILDER
+            .comment("Charge time in ticks for nova burst (sneak + hold V). Beam and nova share the same cooldown (chestBlastCooldown).")
+            .defineInRange("chestBlastNovaChargeTime", 200, 0, Integer.MAX_VALUE);
+    // --- Virus Integration ---
+    private static final ForgeConfigSpec.BooleanValue VIRUS_DISABLES_PLAYER_POWERS = BUILDER.define("virusDisablesPlayerPowers", true);
+    private static final ForgeConfigSpec.BooleanValue VIRUS_DISABLES_MOB_POWERS = BUILDER.define("virusDisablesMobPowers", true);
+    // --- Mob Laser ---
+    private static final ForgeConfigSpec.DoubleValue MOB_LASER_DAMAGE_CONFIG = BUILDER.defineInRange("mobLaserDamage", 0.02, 0.0, 10.0);
+    private static final ForgeConfigSpec.DoubleValue MOB_ADVANCED_LASER_DAMAGE_CONFIG = BUILDER.defineInRange("mobAdvancedLaserDamage", 0.06, 0.0, 10.0);
+    // --- Discharge ---
+    private static final ForgeConfigSpec.DoubleValue POWERPLEX_DISCHARGE_DAMAGE = BUILDER.defineInRange("powerplexDischargeDamage", 2.0, 0.0, 50.0);
+    private static final ForgeConfigSpec.DoubleValue POWERPLEX_DISCHARGE_RADIUS = BUILDER.defineInRange("powerplexDischargeRadius", 5.0, 1.0, 32.0);
+    private static final ForgeConfigSpec.IntValue POWERPLEX_DISCHARGE_TICK_RATE = BUILDER.defineInRange("powerplexDischargeTickRate", 4, 1, 40);
+    private static final ForgeConfigSpec.DoubleValue STORMFRONT_DISCHARGE_DAMAGE = BUILDER.defineInRange("stormfrontDischargeDamage", 0.8, 0.0, 50.0);
+    private static final ForgeConfigSpec.DoubleValue STORMFRONT_DISCHARGE_RADIUS = BUILDER.defineInRange("stormfrontDischargeRadius", 6.0, 1.0, 32.0);
+    private static final ForgeConfigSpec.IntValue STORMFRONT_DISCHARGE_TICK_RATE = BUILDER.defineInRange("stormfrontDischargeTickRate", 4, 1, 40);
     private static final ForgeConfigSpec.IntValue CHEST_BLAST_RANGE = BUILDER
             .comment("Range (in blocks) of the Chest Blast beam")
             .defineInRange("chestBlastRange", 32, 8, 256);
     private static final ForgeConfigSpec.DoubleValue CHEST_BLAST_BLOCK_BREAK_CHANCE = BUILDER
             .comment("Chance per tick per block of the Chest Blast beam destroying blocks in its path (0 = disabled). WARNING: Values above 0 cause significant lag due to per-tick block iteration across the beam cone.")
             .defineInRange("chestBlastBlockBreakChance", 0.0, 0.0, 1.0);
-    private static final ForgeConfigSpec.BooleanValue CHEST_BLAST_BLOCKED_BY_WALLS = BUILDER
-            .comment("Whether the player's Chest Blast beam is blocked by solid blocks (beam stops at walls)")
-            .define("chestBlastBlockedByWalls", true);
     private static final ForgeConfigSpec.BooleanValue CHEST_BLAST_STRIPS_INVINCIBLE = BUILDER
             .comment("Whether the Chest Blast beam can strip Invincibility (if false, Invincible blocks the strip)")
             .define("chestBlastStripsInvincible", true);
-    private static final ForgeConfigSpec.BooleanValue CHEST_BLAST_STRIPS_POWERS = BUILDER
-            .comment("Whether the player's Chest Blast strips Compound V powers from targets (like Anti-V)")
-            .define("chestBlastStripsPowers", true);
     private static final ForgeConfigSpec.BooleanValue MOB_CHEST_BLAST_STRIPS_POWERS = BUILDER
             .comment("Whether mob Chest Blast strips Compound V powers from targets (like the player version)")
             .define("mobChestBlastStripsPowers", false);
-    private static final ForgeConfigSpec.BooleanValue CHEST_BLAST_SHIELD_BLOCKS_STRIP = BUILDER
-            .comment("Whether holding a shield blocks Chest Blast's power-stripping effect (damage is still dealt)")
-            .define("chestBlastShieldBlocksStrip", true);
-
-    // --- Compound V: Gone Viral integration ---
-    private static final ForgeConfigSpec.BooleanValue VIRUS_DISABLES_PLAYER_POWERS = BUILDER
-            .comment("If Compound V: Gone Viral is installed, the virus effect disables all Compound V powers for players")
-            .define("virusDisablesPlayerPowers", true);
-    private static final ForgeConfigSpec.BooleanValue VIRUS_DISABLES_MOB_POWERS = BUILDER
-            .comment("If Compound V: Gone Viral is installed, the virus effect disables all Compound V powers for mobs")
-            .define("virusDisablesMobPowers", true);
-
-    // --- Mob Laser ---
-    private static final ForgeConfigSpec.DoubleValue MOB_LASER_DAMAGE_CONFIG = BUILDER
-            .comment("Damage per tick for mob basic laser eyes (~20 ticks = 1 second)")
-            .defineInRange("mobLaserDamage", 0.02, 0.0, 10.0);
-    private static final ForgeConfigSpec.DoubleValue MOB_ADVANCED_LASER_DAMAGE_CONFIG = BUILDER
-            .comment("Damage per tick for mob advanced laser eyes")
-            .defineInRange("mobAdvancedLaserDamage", 0.06, 0.0, 10.0);
-
-    // --- PowerPlex Discharge ---
-    private static final ForgeConfigSpec.DoubleValue POWERPLEX_DISCHARGE_DAMAGE = BUILDER
-            .comment("Damage per tick from PowerPlex electric discharge (hold V), scaled by charge level")
-            .defineInRange("powerplexDischargeDamage", 2.0, 0.0, 50.0);
-    private static final ForgeConfigSpec.DoubleValue POWERPLEX_DISCHARGE_RADIUS = BUILDER
-            .comment("Radius of the PowerPlex discharge field in blocks")
-            .defineInRange("powerplexDischargeRadius", 5.0, 1.0, 32.0);
-    private static final ForgeConfigSpec.IntValue POWERPLEX_DISCHARGE_TICK_RATE = BUILDER
-            .comment("Damage applied every N ticks during discharge (lower = faster, 4 = 5 times/sec)")
-            .defineInRange("powerplexDischargeTickRate", 4, 1, 40);
-
-    // --- Stormfront Discharge ---
-    private static final ForgeConfigSpec.DoubleValue STORMFRONT_DISCHARGE_DAMAGE = BUILDER
-            .comment("Damage per tick from Stormfront electric discharge (sneak + hold V)")
-            .defineInRange("stormfrontDischargeDamage", 0.8, 0.0, 50.0);
-    private static final ForgeConfigSpec.DoubleValue STORMFRONT_DISCHARGE_RADIUS = BUILDER
-            .comment("Radius of the Stormfront discharge field in blocks")
-            .defineInRange("stormfrontDischargeRadius", 6.0, 1.0, 32.0);
-    private static final ForgeConfigSpec.IntValue STORMFRONT_DISCHARGE_TICK_RATE = BUILDER
-            .comment("Damage applied every N ticks during discharge (lower = faster)")
-            .defineInRange("stormfrontDischargeTickRate", 4, 1, 40);
     private static final ForgeConfigSpec.DoubleValue MOB_CHEST_BLAST_INACCURACY = BUILDER
             .comment("Maximum aim deviation in degrees for mob Chest Blast (0 = perfect aim, 5 = dodgeable)")
             .defineInRange("mobChestBlastInaccuracy", 5.0, 0.0, 45.0);
@@ -473,7 +493,7 @@ public class Config {
             .comment("Whether Compound V powers persist through death (disabled by default)")
             .define("persistPowersOnDeath", false);
     private static final ForgeConfigSpec.BooleanValue VIRUS_REMOVES_POWER_ON_DEATH = BUILDER
-            .comment("If persistPowersOnDeath is enabled and the player has the virus (Compound V: Gone Viral), dying removes one random Compound V power permanently")
+            .comment("If persistPowersOnDeath is on and player has the virus, dying removes one power")
             .define("virusRemovesPowerOnDeath", true);
     private static final ForgeConfigSpec.DoubleValue MOB_POWER_SPAWN_CHANCE = BUILDER
             .comment("Chance (0.0 to 1.0) that a hostile mob spawns with a power when mob powers are enabled")
@@ -507,17 +527,63 @@ public class Config {
     public static int tempVDuration;
     public static double badOutcomeChance;
     public static double tempVBadOutcomeChance;
+    // Tier system
+    public static CompoundVEffect.PowerTier defaultPowerTier;
+    public static double[][] tierStats;
+    public static java.util.Map<net.minecraft.world.effect.MobEffect, CompoundVEffect.PowerTier> effectTierMap = new java.util.HashMap<>();
+    // Multi-power
     public static boolean enableMultiPowers;
     public static int multiPowerMaxCount;
     public static boolean tempVEnableMultiPowers;
     public static int tempVMultiPowerMaxCount;
     public static boolean mobEnableMultiPowers;
     public static int mobMultiPowerMaxCount;
-    // Tier system
-    public static CompoundVEffect.PowerTier defaultPowerTier;
-    public static double[][] tierStats; // [tier ordinal][stat index: 0=DR, 1=DR_PL, 2=STR, 3=STR_PL, 4=KB, 5=KB_PL]
-    public static java.util.Map<net.minecraft.world.effect.MobEffect, CompoundVEffect.PowerTier> effectTierMap = new java.util.HashMap<>();
+    // Laser push
+    public static boolean laserBasicPushEnabled;
+    public static double laserBasicPushStrength;
+    public static double laserBasicShieldPushMultiplier;
+    public static boolean laserAdvancedPushEnabled;
+    public static double laserAdvancedPushStrength;
+    public static double laserAdvancedShieldPushMultiplier;
+    public static int laserBasicDamageTickRate;
+    public static int laserAdvancedDamageTickRate;
+    public static boolean laserBasicBreakBlocks;
+    public static boolean laserAdvancedBreakBlocks;
+    public static double laserBlockBreakChance;
+    public static boolean laserBlockBreakDrops;
+    public static boolean chestBlastBlockBreakDrops;
+    public static boolean laserColorCommandOpOnly;
+    // Teleport
+    public static int teleportCooldown;
+    // Speedster
+    public static int speedsterSpeedLevelsPerAmp;
+    // Chest blast extras
+    public static boolean chestBlastBlockedByWalls;
     public static boolean chestBlastStripsPowers;
+    public static boolean chestBlastShieldBlocksStrip;
+    public static double chestBlastNovaRadius;
+    public static double chestBlastNovaDamage;
+    public static double chestBlastNovaKnockback;
+    public static int chestBlastNovaChargeTime;
+    // Virus
+    public static boolean virusDisablesPlayerPowers;
+    public static boolean virusDisablesMobPowers;
+    // Mob laser
+    public static double mobLaserDamage;
+    public static double mobAdvancedLaserDamage;
+    // Discharge
+    public static double powerplexDischargeDamage;
+    public static double powerplexDischargeRadius;
+    public static int powerplexDischargeTickRate;
+    public static double stormfrontDischargeDamage;
+    public static double stormfrontDischargeRadius;
+    public static int stormfrontDischargeTickRate;
+    // V1 weights
+    public static int v1WeightSpeedster, v1WeightLaserAdvanced, v1WeightHeadPop, v1WeightCreativeFlight;
+    public static int v1WeightTeleport, v1WeightMindControl, v1WeightEnlarge, v1WeightInstakill;
+    public static int v1WeightInvincible, v1WeightStarPower, v1WeightChestBlast, v1WeightStormfront;
+    // Death persist
+    public static boolean virusRemovesPowerOnDeath;
     public static int weightGeneric;
     public static int weightSpeedster;
     public static boolean speedsterMobAttack;
@@ -540,7 +606,6 @@ public class Config {
     public static int weightEnhancedRegen;
     public static int weightDensity;
     public static double densityDamageMultiplier;
-    // public static int weightSpider; // experimental
     public static int weightInstakill;
     public static int weightMindControl;
     public static int weightBerserker;
@@ -562,7 +627,6 @@ public class Config {
     public static int weightStormfront;
     public static int stormfrontLightningCooldown;
     public static boolean stormfrontInRegularPool;
-    // public static int weightForcefield; // experimental
     public static int weightLuck;
     public static int weightChestBlast;
     public static double chestBlastBeamDamage;
@@ -573,7 +637,6 @@ public class Config {
     public static boolean chestBlastInRegularPool;
     public static int chestBlastRange;
     public static double chestBlastBlockBreakChance;
-    public static boolean chestBlastBlockedByWalls;
     public static boolean chestBlastStripsInvincible;
     public static boolean mobPowerCreativeFlight;
     public static boolean mobPowerChestBlast;
@@ -582,17 +645,6 @@ public class Config {
     public static boolean mobPowerHealing;
     public static int mobChestBlastWeight;
     public static boolean mobChestBlastStripsPowers;
-    public static boolean chestBlastShieldBlocksStrip;
-    public static boolean virusDisablesPlayerPowers;
-    public static boolean virusDisablesMobPowers;
-    public static double mobLaserDamage;
-    public static double mobAdvancedLaserDamage;
-    public static double powerplexDischargeDamage;
-    public static double powerplexDischargeRadius;
-    public static int powerplexDischargeTickRate;
-    public static double stormfrontDischargeDamage;
-    public static double stormfrontDischargeRadius;
-    public static int stormfrontDischargeTickRate;
     public static double mobChestBlastInaccuracy;
     public static double mobDamageReduction;
     public static double mobStrengthMultiplier;
@@ -610,7 +662,6 @@ public class Config {
     public static LaserVisualMode laserVisualMode;
     public static boolean enableMobPowers;
     public static boolean persistPowersOnDeath;
-    public static boolean virusRemovesPowerOnDeath;
     public static double mobPowerSpawnChance;
     public static double mobCompoundVDropChance;
     public static double mobTempVDropChance;
@@ -629,18 +680,37 @@ public class Config {
         tempVDuration = TEMP_V_DURATION.get();
         badOutcomeChance = COMPOUND_V_BAD_EFFECT_CHANCE.get();
         tempVBadOutcomeChance = TEMP_V_BAD_REACTION_CHANCE.get();
-        enableMultiPowers = ENABLE_MULTI_POWERS.get();
-        multiPowerMaxCount = MULTI_POWER_MAX_COUNT.get();
-        tempVEnableMultiPowers = TEMP_V_ENABLE_MULTI_POWERS.get();
-        tempVMultiPowerMaxCount = TEMP_V_MULTI_POWER_MAX_COUNT.get();
-        mobEnableMultiPowers = MOB_ENABLE_MULTI_POWERS.get();
-        mobMultiPowerMaxCount = MOB_MULTI_POWER_MAX_COUNT.get();
+        // Tier system
+        String tierStr = DEFAULT_POWER_TIER.get().toUpperCase();
+        try { defaultPowerTier = CompoundVEffect.PowerTier.valueOf(tierStr); } catch (Exception e) { defaultPowerTier = CompoundVEffect.PowerTier.C; }
+        tierStats = new double[6][8];
+        tierStats[0] = new double[]{ TIER_SP_DR.get(), TIER_SP_DR_PL.get(), TIER_SP_STR.get(), TIER_SP_STR_PL.get(), TIER_SP_KB.get(), TIER_SP_KB_PL.get(), TIER_SP_KBD.get(), TIER_SP_KBD_PL.get() };
+        tierStats[1] = new double[]{ TIER_S_DR.get(), TIER_S_DR_PL.get(), TIER_S_STR.get(), TIER_S_STR_PL.get(), TIER_S_KB.get(), TIER_S_KB_PL.get(), TIER_S_KBD.get(), TIER_S_KBD_PL.get() };
+        tierStats[2] = new double[]{ TIER_A_DR.get(), TIER_A_DR_PL.get(), TIER_A_STR.get(), TIER_A_STR_PL.get(), TIER_A_KB.get(), TIER_A_KB_PL.get(), TIER_A_KBD.get(), TIER_A_KBD_PL.get() };
+        tierStats[3] = new double[]{ TIER_B_DR.get(), TIER_B_DR_PL.get(), TIER_B_STR.get(), TIER_B_STR_PL.get(), TIER_B_KB.get(), TIER_B_KB_PL.get(), TIER_B_KBD.get(), TIER_B_KBD_PL.get() };
+        tierStats[4] = new double[]{ TIER_C_DR.get(), TIER_C_DR_PL.get(), TIER_C_STR.get(), TIER_C_STR_PL.get(), TIER_C_KB.get(), TIER_C_KB_PL.get(), TIER_C_KBD.get(), TIER_C_KBD_PL.get() };
+        tierStats[5] = new double[]{ TIER_D_DR.get(), TIER_D_DR_PL.get(), TIER_D_STR.get(), TIER_D_STR_PL.get(), TIER_D_KB.get(), TIER_D_KB_PL.get(), TIER_D_KBD.get(), TIER_D_KBD_PL.get() };
+        // Multi-power
+        enableMultiPowers = ENABLE_MULTI_POWERS.get(); multiPowerMaxCount = MULTI_POWER_MAX_COUNT.get();
+        tempVEnableMultiPowers = TEMP_V_ENABLE_MULTI_POWERS.get(); tempVMultiPowerMaxCount = TEMP_V_MULTI_POWER_MAX_COUNT.get();
+        mobEnableMultiPowers = MOB_ENABLE_MULTI_POWERS.get(); mobMultiPowerMaxCount = MOB_MULTI_POWER_MAX_COUNT.get();
         weightGeneric = WEIGHT_GENERIC.get();
         weightSpeedster = WEIGHT_SPEEDSTER.get();
         speedsterMobAttack = SPEEDSTER_SPEED_ATTACK.get();
+        speedsterSpeedLevelsPerAmp = SPEEDSTER_SPEED_LEVELS_PER_AMP.get();
         weightWater = WEIGHT_WATER.get();
         weightTeleport = WEIGHT_TELEPORT.get();
         teleportRange = TELEPORT_RANGE.get();
+        teleportCooldown = TELEPORT_COOLDOWN.get();
+        laserBasicPushEnabled = LASER_BASIC_PUSH_ENABLED.get(); laserBasicPushStrength = LASER_BASIC_PUSH_STRENGTH.get();
+        laserBasicShieldPushMultiplier = LASER_BASIC_SHIELD_PUSH_MULTIPLIER.get();
+        laserAdvancedPushEnabled = LASER_ADVANCED_PUSH_ENABLED.get(); laserAdvancedPushStrength = LASER_ADVANCED_PUSH_STRENGTH.get();
+        laserAdvancedShieldPushMultiplier = LASER_ADVANCED_SHIELD_PUSH_MULTIPLIER.get();
+        laserBasicDamageTickRate = LASER_BASIC_DAMAGE_TICK_RATE.get(); laserAdvancedDamageTickRate = LASER_ADVANCED_DAMAGE_TICK_RATE.get();
+        laserBasicBreakBlocks = LASER_BASIC_BREAK_BLOCKS.get(); laserAdvancedBreakBlocks = LASER_ADVANCED_BREAK_BLOCKS.get();
+        laserBlockBreakChance = LASER_BLOCK_BREAK_CHANCE.get(); laserBlockBreakDrops = LASER_BLOCK_BREAK_DROPS.get();
+        chestBlastBlockBreakDrops = CHEST_BLAST_BLOCK_BREAK_DROPS.get();
+        laserColorCommandOpOnly = LASER_COLOR_COMMAND_OP_ONLY.get();
         weightAtomCharging = WEIGHT_ATOM_CHARGING.get();
         weightInvisibility = WEIGHT_INVISIBILITY.get();
         weightNightVision = WEIGHT_NIGHT_VISION.get();
@@ -657,7 +727,6 @@ public class Config {
         weightEnhancedRegen = WEIGHT_ENHANCED_REGEN.get();
         weightDensity = WEIGHT_DENSITY.get();
         densityDamageMultiplier = DENSITY_DAMAGE_REDUCTION.get();
-        // weightSpider = WEIGHT_SPIDER.get(); // experimental
         weightInstakill = WEIGHT_INSTAKILL.get();
         weightMindControl = WEIGHT_MIND_CONTROL.get();
         weightBerserker = WEIGHT_BERSERKER.get();
@@ -679,9 +748,14 @@ public class Config {
         weightStormfront = WEIGHT_STORMFRONT.get();
         stormfrontLightningCooldown = STORMFRONT_LIGHTNING_COOLDOWN.get();
         stormfrontInRegularPool = STORMFRONT_IN_REGULAR_POOL.get();
-        // weightForcefield = WEIGHT_FORCEFIELD.get(); // experimental
         weightLuck = WEIGHT_LUCK.get();
         weightChestBlast = WEIGHT_CHEST_BLAST.get();
+        v1WeightSpeedster = V1_WEIGHT_SPEEDSTER.get(); v1WeightLaserAdvanced = V1_WEIGHT_LASER_ADVANCED.get();
+        v1WeightHeadPop = V1_WEIGHT_HEAD_POP.get(); v1WeightCreativeFlight = V1_WEIGHT_CREATIVE_FLIGHT.get();
+        v1WeightTeleport = V1_WEIGHT_TELEPORT.get(); v1WeightMindControl = V1_WEIGHT_MIND_CONTROL.get();
+        v1WeightEnlarge = V1_WEIGHT_ENLARGE.get(); v1WeightInstakill = V1_WEIGHT_INSTAKILL.get();
+        v1WeightInvincible = V1_WEIGHT_INVINCIBLE.get(); v1WeightStarPower = V1_WEIGHT_STAR_POWER.get();
+        v1WeightChestBlast = V1_WEIGHT_CHEST_BLAST.get(); v1WeightStormfront = V1_WEIGHT_STORMFRONT.get();
         chestBlastBeamDamage = CHEST_BLAST_BEAM_DAMAGE.get();
         chestBlastBurstDamage = CHEST_BLAST_BURST_DAMAGE.get();
         chestBlastDuration = CHEST_BLAST_DURATION.get();
@@ -689,28 +763,21 @@ public class Config {
         chestBlastCooldown = CHEST_BLAST_COOLDOWN.get();
         chestBlastInRegularPool = CHEST_BLAST_IN_REGULAR_POOL.get();
         chestBlastRange = CHEST_BLAST_RANGE.get();
-        chestBlastBlockBreakChance = CHEST_BLAST_BLOCK_BREAK_CHANCE.get();
         chestBlastBlockedByWalls = CHEST_BLAST_BLOCKED_BY_WALLS.get();
-        chestBlastStripsInvincible = CHEST_BLAST_STRIPS_INVINCIBLE.get();
         chestBlastStripsPowers = CHEST_BLAST_STRIPS_POWERS.get();
-
-        // Tier system
-        String tierStr = DEFAULT_POWER_TIER.get().toUpperCase();
-        try {
-            defaultPowerTier = CompoundVEffect.PowerTier.valueOf(tierStr);
-        } catch (IllegalArgumentException e) {
-            defaultPowerTier = CompoundVEffect.PowerTier.C;
-        }
-        tierStats = new double[5][6]; // S=0, A=1, B=2, C=3, D=4
-        tierStats[0] = new double[]{ TIER_S_DR.get(), TIER_S_DR_PL.get(), TIER_S_STR.get(), TIER_S_STR_PL.get(), TIER_S_KB.get(), TIER_S_KB_PL.get() };
-        tierStats[1] = new double[]{ TIER_A_DR.get(), TIER_A_DR_PL.get(), TIER_A_STR.get(), TIER_A_STR_PL.get(), TIER_A_KB.get(), TIER_A_KB_PL.get() };
-        tierStats[2] = new double[]{ TIER_B_DR.get(), TIER_B_DR_PL.get(), TIER_B_STR.get(), TIER_B_STR_PL.get(), TIER_B_KB.get(), TIER_B_KB_PL.get() };
-        tierStats[3] = new double[]{ TIER_C_DR.get(), TIER_C_DR_PL.get(), TIER_C_STR.get(), TIER_C_STR_PL.get(), TIER_C_KB.get(), TIER_C_KB_PL.get() };
-        tierStats[4] = new double[]{ TIER_D_DR.get(), TIER_D_DR_PL.get(), TIER_D_STR.get(), TIER_D_STR_PL.get(), TIER_D_KB.get(), TIER_D_KB_PL.get() };
-
-        // Build per-effect tier map (deferred — effects must be registered first)
-        // This is called from a config reload event, so EffectReg is already populated
-        buildEffectTierMap();
+        chestBlastShieldBlocksStrip = CHEST_BLAST_SHIELD_BLOCKS_STRIP.get();
+        chestBlastNovaRadius = CHEST_BLAST_NOVA_RADIUS.get();
+        chestBlastNovaDamage = CHEST_BLAST_NOVA_DAMAGE.get();
+        chestBlastNovaKnockback = CHEST_BLAST_NOVA_KNOCKBACK.get();
+        chestBlastNovaChargeTime = CHEST_BLAST_NOVA_CHARGE_TIME.get();
+        virusDisablesPlayerPowers = VIRUS_DISABLES_PLAYER_POWERS.get(); virusDisablesMobPowers = VIRUS_DISABLES_MOB_POWERS.get();
+        mobLaserDamage = MOB_LASER_DAMAGE_CONFIG.get(); mobAdvancedLaserDamage = MOB_ADVANCED_LASER_DAMAGE_CONFIG.get();
+        powerplexDischargeDamage = POWERPLEX_DISCHARGE_DAMAGE.get(); powerplexDischargeRadius = POWERPLEX_DISCHARGE_RADIUS.get();
+        powerplexDischargeTickRate = POWERPLEX_DISCHARGE_TICK_RATE.get();
+        stormfrontDischargeDamage = STORMFRONT_DISCHARGE_DAMAGE.get(); stormfrontDischargeRadius = STORMFRONT_DISCHARGE_RADIUS.get();
+        stormfrontDischargeTickRate = STORMFRONT_DISCHARGE_TICK_RATE.get();
+        chestBlastBlockBreakChance = CHEST_BLAST_BLOCK_BREAK_CHANCE.get();
+        chestBlastStripsInvincible = CHEST_BLAST_STRIPS_INVINCIBLE.get();
         mobPowerCreativeFlight = MOB_POWER_CREATIVE_FLIGHT.get();
         mobPowerChestBlast = MOB_POWER_CHEST_BLAST.get();
         mobPowerLeap = MOB_POWER_LEAP.get();
@@ -718,17 +785,6 @@ public class Config {
         mobPowerHealing = MOB_POWER_HEALING.get();
         mobChestBlastWeight = MOB_CHEST_BLAST_WEIGHT.get();
         mobChestBlastStripsPowers = MOB_CHEST_BLAST_STRIPS_POWERS.get();
-        chestBlastShieldBlocksStrip = CHEST_BLAST_SHIELD_BLOCKS_STRIP.get();
-        virusDisablesPlayerPowers = VIRUS_DISABLES_PLAYER_POWERS.get();
-        virusDisablesMobPowers = VIRUS_DISABLES_MOB_POWERS.get();
-        mobLaserDamage = MOB_LASER_DAMAGE_CONFIG.get();
-        mobAdvancedLaserDamage = MOB_ADVANCED_LASER_DAMAGE_CONFIG.get();
-        powerplexDischargeDamage = POWERPLEX_DISCHARGE_DAMAGE.get();
-        powerplexDischargeRadius = POWERPLEX_DISCHARGE_RADIUS.get();
-        powerplexDischargeTickRate = POWERPLEX_DISCHARGE_TICK_RATE.get();
-        stormfrontDischargeDamage = STORMFRONT_DISCHARGE_DAMAGE.get();
-        stormfrontDischargeRadius = STORMFRONT_DISCHARGE_RADIUS.get();
-        stormfrontDischargeTickRate = STORMFRONT_DISCHARGE_TICK_RATE.get();
         mobChestBlastInaccuracy = MOB_CHEST_BLAST_INACCURACY.get();
         mobDamageReduction = MOB_DAMAGE_REDUCTION.get();
         mobStrengthMultiplier = MOB_STRENGTH_MULTIPLIER.get();
@@ -766,36 +822,29 @@ public class Config {
         mobCompoundVDropChance = MOB_COMPOUND_V_DROP_CHANCE.get();
         mobTempVDropChance = MOB_TEMP_V_DROP_CHANCE.get();
         mobV1DropChance = MOB_V1_DROP_CHANCE.get();
-    }
 
-    // --- Tier stat accessors (called by CompoundVEffect.PowerTier) ---
-
-    public static double getTierDamageReduction(CompoundVEffect.PowerTier tier) {
-        return tierStats[tier.ordinal()][0];
-    }
-    public static double getTierDamageReductionPerLevel(CompoundVEffect.PowerTier tier) {
-        return tierStats[tier.ordinal()][1];
-    }
-    public static double getTierStrengthMultiplier(CompoundVEffect.PowerTier tier) {
-        return tierStats[tier.ordinal()][2];
-    }
-    public static double getTierStrengthPerLevel(CompoundVEffect.PowerTier tier) {
-        return tierStats[tier.ordinal()][3];
-    }
-    public static double getTierKnockbackReduction(CompoundVEffect.PowerTier tier) {
-        return tierStats[tier.ordinal()][4];
-    }
-    public static double getTierKnockbackPerLevel(CompoundVEffect.PowerTier tier) {
-        return tierStats[tier.ordinal()][5];
-    }
-
-    private static CompoundVEffect.PowerTier parseTier(String s, CompoundVEffect.PowerTier fallback) {
-        if (s == null || s.equalsIgnoreCase("SPECIAL")) return null; // Generic uses its own logic
+        // Rebuild matrices on config reload
         try {
-            return CompoundVEffect.PowerTier.valueOf(s.toUpperCase());
-        } catch (IllegalArgumentException e) {
-            return fallback;
-        }
+            if (blueduck.compound_v.registry.EffectReg.GENERIC.isPresent()) {
+                blueduck.compound_v.registry.EffectReg.addEffectsToMatrix();
+                buildEffectTierMap();
+            }
+        } catch (Exception ignored) {}
+    }
+
+    // --- Tier accessors ---
+    public static double getTierDamageReduction(CompoundVEffect.PowerTier t) { return tierStats[t.ordinal()][0]; }
+    public static double getTierDamageReductionPerLevel(CompoundVEffect.PowerTier t) { return tierStats[t.ordinal()][1]; }
+    public static double getTierStrengthMultiplier(CompoundVEffect.PowerTier t) { return tierStats[t.ordinal()][2]; }
+    public static double getTierStrengthPerLevel(CompoundVEffect.PowerTier t) { return tierStats[t.ordinal()][3]; }
+    public static double getTierKnockbackReduction(CompoundVEffect.PowerTier t) { return tierStats[t.ordinal()][4]; }
+    public static double getTierKnockbackPerLevel(CompoundVEffect.PowerTier t) { return tierStats[t.ordinal()][5]; }
+    public static double getTierKnockbackDealt(CompoundVEffect.PowerTier t) { return tierStats[t.ordinal()][6]; }
+    public static double getTierKnockbackDealtPerLevel(CompoundVEffect.PowerTier t) { return tierStats[t.ordinal()][7]; }
+
+    private static CompoundVEffect.PowerTier parseTier(String s) {
+        if (s == null || s.equalsIgnoreCase("SPECIAL")) return null;
+        try { return CompoundVEffect.PowerTier.valueOf(s.toUpperCase()); } catch (Exception e) { return defaultPowerTier; }
     }
 
     private static void buildEffectTierMap() {
@@ -837,18 +886,17 @@ public class Config {
         mapTier(blueduck.compound_v.registry.EffectReg.SPIDER, TIER_SPIDER);
     }
 
-    private static void mapTier(net.minecraftforge.registries.RegistryObject<net.minecraft.world.effect.MobEffect> effect,
-                                 ForgeConfigSpec.ConfigValue<String> configValue) {
-        CompoundVEffect.PowerTier tier = parseTier(configValue.get(), defaultPowerTier);
-        if (tier != null && effect.isPresent()) {
-            effectTierMap.put(effect.get(), tier);
-        }
+    private static void mapTier(net.minecraftforge.registries.RegistryObject<net.minecraft.world.effect.MobEffect> effect, ForgeConfigSpec.ConfigValue<String> cfg) {
+        CompoundVEffect.PowerTier tier = parseTier(cfg.get());
+        if (tier != null && effect.isPresent()) effectTierMap.put(effect.get(), tier);
     }
 
-    /**
-     * Look up a specific effect's configured tier. Returns defaultPowerTier if not mapped.
-     */
     public static CompoundVEffect.PowerTier getEffectTier(net.minecraft.world.effect.MobEffect effect) {
         return effectTierMap.getOrDefault(effect, defaultPowerTier);
+    }
+
+    /** Called from commonSetup to ensure tier map is built after registries are ready. */
+    public static void rebuildTierMap() {
+        buildEffectTierMap();
     }
 }

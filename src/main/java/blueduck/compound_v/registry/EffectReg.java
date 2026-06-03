@@ -66,13 +66,16 @@ public class EffectReg {
     public static final RegistryObject<MobEffect> BLINDNESS = EFFECTS.register("blindness", () -> new BlindnessEffect(MobEffectCategory.HARMFUL));
     public static final RegistryObject<MobEffect> MAGNETISM = EFFECTS.register("magnetism", () -> new MagnetismEffect(MobEffectCategory.HARMFUL));
 
-    // Marker effects
     public static final RegistryObject<MobEffect> NULLIFIED = EFFECTS.register("nullified", () -> new MobEffect(MobEffectCategory.HARMFUL, 0x555555) {});
-
-    // Experimental
     public static final RegistryObject<MobEffect> NULLIFY = EFFECTS.register("nullify", () -> new blueduck.compound_v.effect.NullifyEffect(MobEffectCategory.BENEFICIAL));
 
     public static void addEffectsToMatrix() {
+        CompoundVEffectMatrix.EFFECT_MATRIX.clear();
+        CompoundVEffectMatrix.FAILURE_MATRIX.clear();
+        CompoundVEffectMatrix.MOB_EFFECT_MATRIX.clear();
+        CompoundVEffectMatrix.MOB_FAILURE_MATRIX.clear();
+        CompoundVEffectMatrix.V1_EFFECT_MATRIX.clear();
+
         // Original effects
         CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(GENERIC.get(), 3), Config.weightGeneric);
         CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(SPEEDSTER.get(), 5), Config.weightSpeedster);
@@ -94,7 +97,7 @@ public class EffectReg {
         CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(ENHANCED_REGEN.get(), 1), Config.weightEnhancedRegen);
         CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(DENSITY.get(), 1), Config.weightDensity);
         // Spider power — in development, disabled for now
-        // CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(SPIDER.get(), 1), Config.weightSpider);
+        // CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(SPIDER.get(), 1), 0); // experimental
         CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(MIND_CONTROL.get(), 1), Config.weightMindControl);
         CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(INSTAKILL.get(), 1), Config.weightInstakill);
         CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(BERSERKER.get(), 1), Config.weightBerserker);
@@ -113,8 +116,8 @@ public class EffectReg {
         if (Config.stormfrontInRegularPool && Config.weightStormfront > 0) {
             CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(STORMFRONT.get(), 1), Config.weightStormfront);
         }
-        //CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(FORCEFIELD.get(), 1), Config.weightForcefield);
-        //CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(NULLIFY.get(), 1), Config.weightNullify); // experimental
+        //CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(FORCEFIELD.get(), 1), 0); // experimental
+        //CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(NULLIFY.get(), 1), 0); // experimental
         CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(LUCK.get(), 3), Config.weightLuck);
 
         // Pehkui-dependent effects
@@ -164,31 +167,30 @@ public class EffectReg {
         CompoundVEffectMatrix.addMobFailureEffect(new CompoundVEffectGiver(UNCONTROLLED_TELEPORT.get(), 1), 15);
         CompoundVEffectMatrix.addMobFailureEffect(new CompoundVEffectGiver(MAGNETISM.get(), 1), 5);
 
-        // === V1 pool (original formula) — curated powerful effects at max level ===
-        // V1 pool — only include effects whose weight is > 0 (disabled = excluded)
-        if (Config.weightSpeedster > 0)
-            CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(SPEEDSTER.get(), 5), 3);
-        if (Config.weightLaserEyesAdvanced > 0)
-            CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(LASER_EYES_ADVANCED.get(), 1), 3);
-        if (Config.weightHeadPop > 0)
-            CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(HEAD_POP.get(), 3), 3);
-        if (Config.weightCreativeFlight > 0)
-            CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(CREATIVE_FLIGHT.get(), 1), 2);
-        if (Config.weightTeleport > 0)
-            CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(TELEPORT.get(), 1), 2);
-        if (Config.weightMindControl > 0)
-            CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(MIND_CONTROL.get(), 1), 2);
-        if (ModList.get().isLoaded("pehkui") && Config.weightEnlarge > 0)
-            CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(ENLARGE.get(), 1), 2);
-        if (Config.weightInstakill > 0)
-            CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(INSTAKILL.get(), 1), 1);
-        if (Config.weightInvincible > 0)
-            CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(INVINCIBLE.get(), 1), 1);
-        if (Config.weightStarPower > 0)
-            CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(STAR_POWER.get(), 1), 1);
-        if (Config.weightChestBlast > 0)
-            CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(CHEST_BLAST.get(), 1), Config.weightChestBlast);
-        if (Config.weightStormfront > 0)
-            CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(STORMFRONT.get(), 1), Config.weightStormfront);
+        // === V1 pool — separate configurable weights ===
+        if (Config.v1WeightSpeedster > 0)
+            CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(SPEEDSTER.get(), 5), Config.v1WeightSpeedster);
+        if (Config.v1WeightLaserAdvanced > 0)
+            CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(LASER_EYES_ADVANCED.get(), 1), Config.v1WeightLaserAdvanced);
+        if (Config.v1WeightHeadPop > 0)
+            CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(HEAD_POP.get(), 3), Config.v1WeightHeadPop);
+        if (Config.v1WeightCreativeFlight > 0)
+            CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(CREATIVE_FLIGHT.get(), 1), Config.v1WeightCreativeFlight);
+        if (Config.v1WeightTeleport > 0)
+            CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(TELEPORT.get(), 1), Config.v1WeightTeleport);
+        if (Config.v1WeightMindControl > 0)
+            CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(MIND_CONTROL.get(), 1), Config.v1WeightMindControl);
+        if (ModList.get().isLoaded("pehkui") && Config.v1WeightEnlarge > 0)
+            CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(ENLARGE.get(), 1), Config.v1WeightEnlarge);
+        if (Config.v1WeightInstakill > 0)
+            CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(INSTAKILL.get(), 1), Config.v1WeightInstakill);
+        if (Config.v1WeightInvincible > 0)
+            CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(INVINCIBLE.get(), 1), Config.v1WeightInvincible);
+        if (Config.v1WeightStarPower > 0)
+            CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(STAR_POWER.get(), 1), Config.v1WeightStarPower);
+        if (Config.v1WeightChestBlast > 0)
+            CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(CHEST_BLAST.get(), 1), Config.v1WeightChestBlast);
+        if (Config.v1WeightStormfront > 0)
+            CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(STORMFRONT.get(), 1), Config.v1WeightStormfront);
     }
 }

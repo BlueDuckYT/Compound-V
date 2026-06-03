@@ -51,6 +51,9 @@ public class CompoundVMod {
 
     private void commonSetup(final FMLCommonSetupEvent event) {
         EffectReg.addEffectsToMatrix();
+        // Build tier map now that registries are available
+        // (onLoad skips this on first config load because registries aren't ready yet)
+        Config.rebuildTierMap();
         event.enqueueWork(() -> {
             PacketHandler.register();
         });

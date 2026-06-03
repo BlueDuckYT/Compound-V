@@ -1,6 +1,7 @@
 package blueduck.compound_v.effect;
 
 import blueduck.compound_v.Config;
+import blueduck.compound_v.util.S2CLaserSyncPacket;
 import net.minecraft.core.particles.DustParticleOptions;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.level.ServerLevel;
@@ -27,7 +28,6 @@ public class LaserEyesAdvancedEffect extends LaserEyesEffect {
     public LaserEyesAdvancedEffect(MobEffectCategory category) {
         super(category);
     }
-
 
     @Override
     public PowerType getPowerType() {
@@ -56,12 +56,14 @@ public class LaserEyesAdvancedEffect extends LaserEyesEffect {
 
     @Override
     protected DustParticleOptions getCoreParticle(int colorIndex) {
-        return RED_CORE;
+        if (colorIndex == S2CLaserSyncPacket.COLOR_RED) return RED_CORE;
+        return super.getCoreParticle(colorIndex); // handles all colors including rainbow
     }
 
     @Override
     protected DustParticleOptions getGlowParticle(int colorIndex) {
-        return RED_GLOW;
+        if (colorIndex == S2CLaserSyncPacket.COLOR_RED) return RED_GLOW;
+        return super.getCoreParticle(colorIndex);
     }
 
     @Override

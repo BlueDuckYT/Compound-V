@@ -19,10 +19,12 @@ import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
 
 public class TeleportEffect extends CompoundVEffect {
+
+    private static final java.util.Map<java.util.UUID, Long> cooldownUntil = new java.util.concurrent.ConcurrentHashMap<>();
+
     public TeleportEffect(MobEffectCategory category) {
         super(category);
     }
-
 
     @Override
     public PowerType getPowerType() {
@@ -36,6 +38,16 @@ public class TeleportEffect extends CompoundVEffect {
 
     public void activate(ServerPlayer player, int amplifier, ServerLevel level) {
         super.activate(player, amplifier, level);
+
+        java.util.UUID uuid = player.getUUID();
+        long now = level.getGameTime();
+        long until = cooldownUntil.getOrDefault(uuid, 0L);
+        if (now < until) {
+            int remaining = (int) ((until - now) / 20);
+            player.displayClientMessage(net.minecraft.network.chat.Component.literal("§7Cooldown: " + remaining + "s"), true);
+            return;
+        }
+        int cooldownTicks = Config.teleportCooldown;
 
         Vec3 eyePos = player.getEyePosition();
         Vec3 lookVec = player.getLookAngle();
@@ -68,6 +80,7 @@ public class TeleportEffect extends CompoundVEffect {
                 double z = target.getZ() + 0.5;
 
                 player.teleportTo(x, y, z);
+                if (cooldownTicks > 0) cooldownUntil.put(uuid, now + cooldownTicks);
 
                 // Arrival particles
                 level.sendParticles(
@@ -77,6 +90,12 @@ public class TeleportEffect extends CompoundVEffect {
                 );
             }
         }
+    }
+
+    @Override
+    public void removeAttributeModifiers(LivingEntity entity, net.minecraft.world.entity.ai.attributes.AttributeMap attributeMap, int amplifier) {
+        super.removeAttributeModifiers(entity, attributeMap, amplifier);
+        if (entity != null) cooldownUntil.remove(entity.getUUID());
     }
 
     public int getTeleportRange() {

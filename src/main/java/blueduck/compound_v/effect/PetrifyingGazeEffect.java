@@ -46,7 +46,6 @@ public class PetrifyingGazeEffect extends CompoundVEffect {
         super(category);
     }
 
-
     // Moderate passive — gaze is the power, not melee
     @Override
     public double getDamageReduction(int amplifier) {

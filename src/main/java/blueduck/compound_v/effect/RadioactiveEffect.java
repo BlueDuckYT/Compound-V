@@ -54,11 +54,6 @@ public class RadioactiveEffect extends CompoundVEffect {
         super(category);
     }
 
-    @Override
-    public PowerType getPowerType() {
-        return PowerType.ACTIVE;
-    }
-
     public static boolean isAuraActive(UUID uuid) {
         return activeAuras.contains(uuid);
     }

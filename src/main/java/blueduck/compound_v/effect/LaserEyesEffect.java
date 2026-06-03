@@ -58,7 +58,6 @@ public class LaserEyesEffect extends CompoundVEffect {
         super(category);
     }
 
-
     @Override
     public PowerType getPowerType() {
         return PowerType.ACTIVE;
@@ -81,18 +80,41 @@ public class LaserEyesEffect extends CompoundVEffect {
     }
 
     /**
-     * Determines the laser color for this player.
-     * Advanced: always red. Basic: even 20% split across orange, blue, green, purple, yellow.
-     * Color is stable per-player per-world (seeded from UUID + world seed).
+     * Gets laser color for this player from persistent NBT.
+     * Basic lasers: stored under "compound_v_laser_color", 1/200 rainbow chance on first roll.
+     * Advanced lasers: stored under "compound_v_adv_laser_color", usually red but
+     *   1/200 chance rainbow, 1/100 chance blue on first roll.
+     * Can be modified by addon mods via NBT.
      */
     protected int getPlayerColorIndex(ServerPlayer player) {
-        if (isAdvanced()) return S2CLaserSyncPacket.COLOR_RED;
+        net.minecraft.nbt.CompoundTag data = player.getPersistentData();
 
+        if (isAdvanced()) {
+            String key = "compound_v_adv_laser_color";
+            if (data.contains(key)) return data.getInt(key);
+            int color = rollAdvancedLaserColor(player);
+            data.putInt(key, color);
+            return color;
+        } else {
+            String key = "compound_v_laser_color";
+            if (data.contains(key)) return data.getInt(key);
+            int color = rollPlayerLaserColor(player);
+            data.putInt(key, color);
+            return color;
+        }
+    }
+
+    /**
+     * Rolls a new laser color for basic laser eyes.
+     * 1/200 rainbow, otherwise seeded 5-way split.
+     */
+    private int rollPlayerLaserColor(ServerPlayer player) {
+        if (player.getRandom().nextInt(200) == 0) {
+            return S2CLaserSyncPacket.COLOR_RAINBOW;
+        }
         long uuidHash = player.getUUID().getMostSignificantBits() ^ player.getUUID().getLeastSignificantBits();
         long seed = player.serverLevel().getSeed();
-        // Mix UUID and world seed so the same player gets different colors on different worlds
         long hash = uuidHash * 6364136223846793005L + seed;
-        // Use a wide bit range for a clean 5-way split, deterministic per player+world
         int bucket = (int) (((hash >>> 4) & 0xFFFFFFL) % 5);
         return switch (bucket) {
             case 0 -> S2CLaserSyncPacket.COLOR_ORANGE;
@@ -104,7 +126,29 @@ public class LaserEyesEffect extends CompoundVEffect {
         };
     }
 
+    /**
+     * Rolls a new laser color for advanced laser eyes.
+     * 1/200 rainbow, 1/100 blue, otherwise red.
+     */
+    private int rollAdvancedLaserColor(ServerPlayer player) {
+        int roll = player.getRandom().nextInt(200);
+        if (roll == 0) return S2CLaserSyncPacket.COLOR_RAINBOW;
+        if (roll <= 2) return S2CLaserSyncPacket.COLOR_BLUE; // rolls 1 and 2 = 2/200 = 1/100
+        return S2CLaserSyncPacket.COLOR_RED;
+    }
+
     protected DustParticleOptions getCoreParticle(int colorIndex) {
+        if (colorIndex == S2CLaserSyncPacket.COLOR_RAINBOW) {
+            // Cycle through core particles for rainbow shimmer
+            return switch ((int) (System.currentTimeMillis() / 100 % 5)) {
+                case 0 -> LASER_CORE_ORANGE;
+                case 1 -> LASER_CORE_BLUE;
+                case 2 -> LASER_CORE_GREEN;
+                case 3 -> LASER_CORE_PURPLE;
+                case 4 -> LASER_CORE_YELLOW;
+                default -> LASER_CORE_ORANGE;
+            };
+        }
         return switch (colorIndex) {
             case S2CLaserSyncPacket.COLOR_BLUE -> LASER_CORE_BLUE;
             case S2CLaserSyncPacket.COLOR_GREEN -> LASER_CORE_GREEN;
@@ -180,7 +224,7 @@ public class LaserEyesEffect extends CompoundVEffect {
 
             if (isSoftBlock(hitState) && level.random.nextFloat() < 0.625f) {
                 // Burn through: destroy the block and continue
-                level.destroyBlock(hitBlockPos, false);
+                level.destroyBlock(hitBlockPos, Config.laserBlockBreakDrops);
                 level.sendParticles(ParticleTypes.FLAME,
                         hitBlockPos.getX() + 0.5, hitBlockPos.getY() + 0.5, hitBlockPos.getZ() + 0.5,
                         3, 0.3, 0.3, 0.3, 0.02);
@@ -197,7 +241,10 @@ public class LaserEyesEffect extends CompoundVEffect {
 
         double beamLength = eyePos.distanceTo(hitPos);
 
-        // --- Damage entities along beam (every tick, low damage, NO knockback) ---
+        // --- Damage entities along beam (gated by tick rate config) ---
+        int tickRate = isAdvanced() ? Config.laserAdvancedDamageTickRate : Config.laserBasicDamageTickRate;
+        boolean isDamageTick = (player.tickCount % tickRate == 0);
+
         AABB beamBox = new AABB(eyePos, hitPos).inflate(0.5);
         List<LivingEntity> entities = level.getEntitiesOfClass(LivingEntity.class, beamBox,
                 e -> e != player && e.isAlive());
@@ -209,7 +256,34 @@ public class LaserEyesEffect extends CompoundVEffect {
                 Vec3 closestOnBeam = eyePos.add(lookVec.scale(dot));
                 double distToBeam = closestOnBeam.distanceTo(target.position().add(0, target.getBbHeight() / 2, 0));
                 if (distToBeam < target.getBbWidth() + 0.5) {
-                    applyLaserDamage(player, target, level);
+                    if (isDamageTick) {
+                        applyLaserDamage(player, target, level);
+                    }
+                }
+            }
+        }
+
+        // --- Block breaking along beam path (if enabled) ---
+        boolean breakBlocks = isAdvanced() ? Config.laserAdvancedBreakBlocks : Config.laserBasicBreakBlocks;
+        if (breakBlocks && isDamageTick) {
+            double breakChance = Config.laserBlockBreakChance;
+            boolean drops = Config.laserBlockBreakDrops;
+            double step = 1.0;
+            // Extend slightly past beam end to include the hit block
+            double breakRange = hitSolidBlock ? beamLength + 1.0 : beamLength;
+            int steps = (int) (breakRange / step);
+            for (int i = 1; i <= steps; i++) {
+                Vec3 beamPoint = eyePos.add(lookVec.scale(i * step));
+                BlockPos bPos = BlockPos.containing(beamPoint.x, beamPoint.y, beamPoint.z);
+                BlockState bState = level.getBlockState(bPos);
+                if (!bState.isAir()) {
+                    float hardness = bState.getDestroySpeed(level, bPos);
+                    if (hardness >= 0 && hardness < 50 && player.getRandom().nextDouble() < breakChance) {
+                        level.destroyBlock(bPos, drops, player);
+                        level.sendParticles(ParticleTypes.FLAME,
+                                bPos.getX() + 0.5, bPos.getY() + 0.5, bPos.getZ() + 0.5,
+                                2, 0.2, 0.2, 0.2, 0.02);
+                    }
                 }
             }
         }
@@ -259,8 +333,13 @@ public class LaserEyesEffect extends CompoundVEffect {
      */
     protected void applyLaserDamage(ServerPlayer player, LivingEntity target, ServerLevel level) {
         float damage = getLaserDamage();
+        boolean advanced = isAdvanced();
+        boolean pushEnabled = advanced ? Config.laserAdvancedPushEnabled : Config.laserBasicPushEnabled;
+        double pushStrength = advanced ? Config.laserAdvancedPushStrength : Config.laserBasicPushStrength;
+        double shieldPushMult = advanced ? Config.laserAdvancedShieldPushMultiplier : Config.laserBasicShieldPushMultiplier;
+        Vec3 pushDir = target.position().subtract(player.position()).normalize();
+        pushDir = new Vec3(pushDir.x, 0, pushDir.z).normalize();
 
-        // --- Shield: blocks all damage, melts durability ---
         if (target.isBlocking()) {
             ItemStack shield = target.getUseItem();
             if (shield.getItem() instanceof ShieldItem) {
@@ -273,22 +352,27 @@ public class LaserEyesEffect extends CompoundVEffect {
                     level.playSound(null, target.getX(), target.getY(), target.getZ(),
                             SoundEvents.FIRE_EXTINGUISH, SoundSource.PLAYERS, 0.3F, 1.5F);
                 }
+                if (pushEnabled && pushStrength > 0) {
+                    Vec3 motion = target.getDeltaMovement();
+                    target.setDeltaMovement(motion.add(pushDir.scale(pushStrength * shieldPushMult)));
+                    target.hurtMarked = true;
+                }
                 return;
             }
         }
 
-        // --- Fire resistance: 70% reduction ---
         if (target.hasEffect(MobEffects.FIRE_RESISTANCE)) {
             damage *= 0.3f;
         }
 
-        // --- Apply damage with NO knockback ---
-        // Save current motion, apply damage, then restore motion
         Vec3 motionBefore = target.getDeltaMovement();
         target.invulnerableTime = 0;
         target.hurt(player.damageSources().playerAttack(player), damage);
-        target.setDeltaMovement(motionBefore); // Cancel any knockback
-        target.hurtMarked = true; // Sync the restored motion to client
+        target.setDeltaMovement(motionBefore);
+        if (pushEnabled && pushStrength > 0) {
+            target.setDeltaMovement(motionBefore.add(pushDir.scale(pushStrength)));
+        }
+        target.hurtMarked = true;
 
         // Keep on fire
         target.setSecondsOnFire(2);

@@ -59,7 +59,6 @@ public class StormfrontEffect extends CompoundVEffect {
         super(category);
     }
 
-
     @Override
     public PowerType getPowerType() {
         return PowerType.ACTIVE;
@@ -93,72 +92,78 @@ public class StormfrontEffect extends CompoundVEffect {
     @Override
     public void activate(ServerPlayer player, int amplifier, ServerLevel level) {
         if (player.isShiftKeyDown()) {
-            // Sneak + press: single discharge pulse
             dischargeAOE(player, level);
         } else {
-            // Normal press: summon lightning
             summonLightning(player, level);
         }
     }
 
-    // Track discharge state
     private static final Map<UUID, Long> lastDischargeTick = new ConcurrentHashMap<>();
 
     @Override
     public void holdActivate(ServerPlayer player, int amplifier, ServerLevel level) {
         UUID uuid = player.getUUID();
         lastHoldTick.put(uuid, level.getGameTime());
-
         if (player.isShiftKeyDown()) {
-            // Sneaking + hold V: electric discharge AoE
             dischargeAOE(player, level);
         } else {
-            // Standing + hold V: rapid lightning (still respects cooldown)
             summonLightning(player, level);
         }
     }
 
-    /**
-     * Electric discharge: damages all entities in radius while sneaking + holding V.
-     * Similar to PowerPlex but with Stormfront's own config values.
-     */
     private void dischargeAOE(ServerPlayer player, ServerLevel level) {
         UUID uuid = player.getUUID();
         long now = level.getGameTime();
-
         int tickRate = Config.stormfrontDischargeTickRate;
         long lastTick = lastDischargeTick.getOrDefault(uuid, 0L);
         if (now - lastTick < tickRate) return;
         lastDischargeTick.put(uuid, now);
-
         double radius = Config.stormfrontDischargeRadius;
         float damage = (float) Config.stormfrontDischargeDamage;
 
-        // Purple electric sparks in a sphere
-        level.sendParticles(ParticleTypes.ELECTRIC_SPARK,
-                player.getX(), player.getY() + player.getBbHeight() * 0.5, player.getZ(),
-                20, radius * 0.4, 0.6, radius * 0.4, 0.2);
-
         level.playSound(null, player.getX(), player.getY(), player.getZ(),
-                SoundEvents.LIGHTNING_BOLT_IMPACT, SoundSource.PLAYERS, 0.5F, 1.2F);
+                SoundEvents.LIGHTNING_BOLT_IMPACT, SoundSource.PLAYERS, 0.4F, 1.4F);
 
+        // Collect hit targets and their positions for beam rendering
+        java.util.List<LivingEntity> hitTargets = new java.util.ArrayList<>();
         AABB searchBox = player.getBoundingBox().inflate(radius);
         net.minecraft.world.damagesource.DamageSource source = player.damageSources().lightningBolt();
-
         for (net.minecraft.world.entity.Entity e : level.getEntities(player, searchBox,
                 ent -> ent instanceof LivingEntity && ent.isAlive() && ent != player)) {
             LivingEntity target = (LivingEntity) e;
-            double dist = target.distanceTo(player);
-            if (dist > radius) continue;
-
-            // Zero I-frames for stun effect
+            if (target.distanceTo(player) > radius) continue;
             target.invulnerableTime = 0;
             target.hurt(source, damage);
+            hitTargets.add(target);
 
+            // Spark on hit
             level.sendParticles(ParticleTypes.ELECTRIC_SPARK,
                     target.getX(), target.getY() + target.getBbHeight() * 0.5, target.getZ(),
                     5, 0.2, 0.3, 0.2, 0.1);
         }
+
+        // Send lightning beams from player to each hit mob (reuses StormfrontBeamPacket)
+        if (!hitTargets.isEmpty()) {
+            int beamCount = Math.min(hitTargets.size(), 8); // cap at 8 beams for performance
+            double[] bx = new double[beamCount];
+            double[] by = new double[beamCount];
+            double[] bz = new double[beamCount];
+            for (int i = 0; i < beamCount; i++) {
+                LivingEntity t = hitTargets.get(i);
+                bx[i] = t.getX();
+                by[i] = t.getY() + t.getBbHeight() * 0.5;
+                bz[i] = t.getZ();
+            }
+            blueduck.compound_v.keybinds.PacketHandler.sendToTrackingAndSelf(
+                    new blueduck.compound_v.util.S2CStormfrontBeamPacket(
+                            player.getId(), bx, by, bz, beamCount),
+                    player);
+        }
+
+        // Ambient sparks at player
+        level.sendParticles(ParticleTypes.ELECTRIC_SPARK,
+                player.getX(), player.getY() + player.getBbHeight() * 0.5, player.getZ(),
+                10, radius * 0.2, 0.4, radius * 0.2, 0.1);
     }
 
     private void summonLightning(ServerPlayer player, ServerLevel level) {

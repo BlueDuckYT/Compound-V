@@ -32,7 +32,6 @@ public class EnhancedRegenEffect extends CompoundVEffect {
         super(category);
     }
 
-
     public static void onPlayerDamaged(UUID playerUUID, long gameTime) {
         lastDamageTick.put(playerUUID, gameTime);
     }

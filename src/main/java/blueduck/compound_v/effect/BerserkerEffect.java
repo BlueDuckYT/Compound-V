@@ -43,7 +43,6 @@ public class BerserkerEffect extends CompoundVEffect {
         super(category);
     }
 
-
     /**
      * Returns the damage multiplier based on the entity's current health percentage.
      * Used by ForgeEvents to scale outgoing damage.

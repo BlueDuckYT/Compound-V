@@ -20,7 +20,6 @@ public class DeepEffect extends CompoundVEffect {
         super(category);
     }
 
-
     public void applyEffectTick(LivingEntity entity, int amplifier) {
         super.applyEffectTick(entity, amplifier);
         if (CompoundVEffect.arePowersSuppressed(entity)) return;

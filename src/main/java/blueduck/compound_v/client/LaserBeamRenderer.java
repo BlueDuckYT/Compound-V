@@ -51,7 +51,40 @@ public class LaserBeamRenderer {
             { 1.0f, 1.0f, 0.85f,   1.0f, 0.9f, 0.15f,  0.9f, 0.75f, 0.02f },
             // 6 = Chest Blast (Soldier Boy — wide gold beam)
             { 1.0f, 0.95f, 0.7f,   1.0f, 0.75f, 0.15f,  1.0f, 0.5f, 0.05f },
+            // 7 = Rainbow (cycles through hues)
+            { 1.0f, 1.0f, 1.0f,   1.0f, 0.0f, 0.0f,   1.0f, 0.0f, 0.0f },
     };
+
+    /** Compute cycling rainbow colors from game time. */
+    private static float[] getRainbowColors(float time) {
+        float hue1 = (time * 0.05f) % 1.0f;
+        float hue2 = (hue1 + 0.1f) % 1.0f;
+        float hue3 = (hue1 + 0.2f) % 1.0f;
+        float[] core = hsbToRgb(hue1, 0.3f, 1.0f);
+        float[] mid = hsbToRgb(hue2, 1.0f, 1.0f);
+        float[] outer = hsbToRgb(hue3, 1.0f, 0.85f);
+        return new float[] { core[0], core[1], core[2], mid[0], mid[1], mid[2], outer[0], outer[1], outer[2] };
+    }
+
+    /** Simple HSB to RGB. h/s/b in [0,1], returns float[3] RGB in [0,1]. */
+    private static float[] hsbToRgb(float h, float s, float b) {
+        float r = b, g = b, bl = b;
+        if (s != 0) {
+            float hh = (h - (float) Math.floor(h)) * 6.0f;
+            int i = (int) hh;
+            float f = hh - i;
+            float p = b * (1 - s), q = b * (1 - s * f), t = b * (1 - s * (1 - f));
+            switch (i) {
+                case 0 -> { r = b; g = t; bl = p; }
+                case 1 -> { r = q; g = b; bl = p; }
+                case 2 -> { r = p; g = b; bl = t; }
+                case 3 -> { r = p; g = q; bl = b; }
+                case 4 -> { r = t; g = p; bl = b; }
+                case 5 -> { r = b; g = p; bl = q; }
+            }
+        }
+        return new float[] { r, g, bl };
+    }
 
     @SubscribeEvent
     public static void onClientTick(TickEvent.ClientTickEvent event) {
@@ -85,7 +118,12 @@ public class LaserBeamRenderer {
 
             // --- Color selection from palette ---
             int ci = Math.max(0, Math.min(info.colorIndex, COLORS.length - 1));
-            float[] c = COLORS[ci];
+            float[] c;
+            if (info.colorIndex == S2CLaserSyncPacket.COLOR_RAINBOW) {
+                c = getRainbowColors((living.tickCount + partialTick));
+            } else {
+                c = COLORS[ci];
+            }
             float wr = c[0], wg = c[1], wb = c[2];  // white-hot core
             float cr = c[3], cg = c[4], cb = c[5];  // mid glow
             float gr = c[6], gg = c[7], gb = c[8];  // outer glow

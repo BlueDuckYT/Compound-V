@@ -53,41 +53,56 @@ public class ForcefieldRenderLayer extends RenderLayer<AbstractClientPlayer, Pla
             r = 1.0f; g = 0.85f; b = 0.3f;
         }
 
-        float alpha = 0.25f + 0.05f * (float) Math.sin(ageInTicks * 0.1);
-        float radius = 2.0f; // matches FIELD_RADIUS
+        // Shield health drives ONLY transparency now: full = bright, low = faint. Shimmer and
+        // UV scroll run at a constant rate (no "sluggish at low health" change — unwanted).
+        float frac = ForcefieldEffect.getHealthFraction(player.getUUID());
+        float baseAlpha = 0.08f + 0.22f * frac;
+        float shimmer = 0.04f * (float) Math.sin(ageInTicks * 0.08);
+        float alpha = baseAlpha + shimmer;
+        float radius = 1.15f;
 
-        // Animated UV offset for the energy swirl
-        float scroll = (ageInTicks * 0.01f) % 1.0f;
+        // Constant UV scroll speed (independent of health).
+        float scrollSpeed = 0.014f;
+        float scroll = (ageInTicks * scrollSpeed) % 1.0f;
 
         poseStack.pushPose();
 
-        // Counter the player's body yaw so the cube stays world-aligned (does not rotate).
-        // LivingEntityRenderer applies mulPose(YP.rotationDegrees(180 - bodyYaw)) before layers,
-        // so we undo it with the inverse rotation: bodyYaw - 180.
+        // IMPORTANT coordinate-space note (this is why the bubble kept rendering "too low"):
+        // RenderLayer runs inside LivingEntityRenderer's model space, which is FLIPPED — the
+        // model applies scale(-1,-1,1), so here +Y points DOWN and the origin is at the player's
+        // HEAD, not the feet. Earlier fixes nudged Y in this flipped frame and made it worse.
+        // We correct it once, up front: flip Y back to +Y-up and move the origin to the feet.
+        // After this, bottomY/topY are intuitive world coordinates measured up from the feet.
+        poseStack.scale(1.0F, -1.0F, 1.0F);                 // undo the model's Y flip (+Y now up)
+        poseStack.translate(0.0F, -player.getBbHeight(), 0.0F); // origin from head -> feet
+
+        // Counter the player's body yaw so the cube stays world-aligned (does not rotate with
+        // the body). The renderer applied YP.rotationDegrees(180 - bodyYaw); undo it.
         float bodyYaw = net.minecraft.util.Mth.lerp(partialTick, player.yBodyRotO, player.yBodyRot);
         poseStack.mulPose(com.mojang.math.Axis.YP.rotationDegrees(bodyYaw - 180.0F));
 
-        // Offset to center of player (render is relative to entity feet)
-        poseStack.translate(0, player.getBbHeight() * 0.5, 0);
+        // Now in a clean feet-origin, +Y-up frame: enclose the body with a little headroom.
+        float bottomY = -0.05f;                                  // just below the feet
+        float topY = Math.max(player.getBbHeight() + 0.7f, 2.5f); // above the head
 
         VertexConsumer consumer = buffer.getBuffer(
                 RenderType.energySwirl(ENERGY_TEXTURE, scroll, scroll));
         Matrix4f matrix = poseStack.last().pose();
         Matrix3f normal = poseStack.last().normal();
 
-        // Render 6 faces of the cube
+        // Render 6 faces of the cube. X/Z use the horizontal radius; Y spans bottomY..topY.
         renderFace(consumer, matrix, normal, r, g, b, alpha,
-                -radius, -radius, -radius, radius, radius, -radius, 0, 0, -1); // -Z
+                -radius, bottomY, -radius, radius, topY, -radius, 0, 0, -1); // -Z
         renderFace(consumer, matrix, normal, r, g, b, alpha,
-                -radius, -radius, radius, radius, radius, radius, 0, 0, 1);   // +Z
+                -radius, bottomY, radius, radius, topY, radius, 0, 0, 1);   // +Z
         renderFace(consumer, matrix, normal, r, g, b, alpha * 0.8f,
-                -radius, -radius, -radius, -radius, radius, radius, -1, 0, 0); // -X
+                -radius, bottomY, -radius, -radius, topY, radius, -1, 0, 0); // -X
         renderFace(consumer, matrix, normal, r, g, b, alpha * 0.8f,
-                radius, -radius, -radius, radius, radius, radius, 1, 0, 0);    // +X
+                radius, bottomY, -radius, radius, topY, radius, 1, 0, 0);    // +X
         renderFace(consumer, matrix, normal, r, g, b, alpha * 0.6f,
-                -radius, radius, -radius, radius, radius, radius, 0, 1, 0);    // +Y (top)
+                -radius, topY, -radius, radius, topY, radius, 0, 1, 0);    // +Y (top)
         renderFace(consumer, matrix, normal, r, g, b, alpha * 0.6f,
-                -radius, -radius, -radius, radius, -radius, radius, 0, -1, 0); // -Y (bottom)
+                -radius, bottomY, -radius, radius, bottomY, radius, 0, -1, 0); // -Y (bottom)
 
         poseStack.popPose();
     }

@@ -13,8 +13,6 @@ public class CompoundVEffectMatrix {
     // Mob-injectable pools: only powers that mechanically function on non-player entities
     public static ArrayList<CompoundVEffectGiver> MOB_EFFECT_MATRIX = new ArrayList<>();
 
-    public static ArrayList<CompoundVEffectGiver> MOB_FAILURE_MATRIX = new ArrayList<>();
-
     // V1 pool: curated list of powerful effects for the original formula
     public static ArrayList<CompoundVEffectGiver> V1_EFFECT_MATRIX = new ArrayList<>();
 
@@ -36,12 +34,6 @@ public class CompoundVEffectMatrix {
         }
     }
 
-    public static void addMobFailureEffect(CompoundVEffectGiver effect, int weight) {
-        for (int i = 0; i < weight; i++) {
-            MOB_FAILURE_MATRIX.add(effect);
-        }
-    }
-
     public static void addV1Effect(CompoundVEffectGiver effect, int weight) {
         for (int i = 0; i < weight; i++) {
             V1_EFFECT_MATRIX.add(effect);
@@ -54,7 +46,7 @@ public class CompoundVEffectMatrix {
      */
     public static int getMaxLevel(net.minecraft.world.effect.MobEffect effect) {
         int max = -1;
-        for (var matrix : new ArrayList[]{EFFECT_MATRIX, FAILURE_MATRIX, MOB_EFFECT_MATRIX, MOB_FAILURE_MATRIX, V1_EFFECT_MATRIX}) {
+        for (var matrix : new ArrayList[]{EFFECT_MATRIX, FAILURE_MATRIX, MOB_EFFECT_MATRIX, V1_EFFECT_MATRIX}) {
             for (Object obj : matrix) {
                 CompoundVEffectGiver giver = (CompoundVEffectGiver) obj;
                 if (giver.mobEffect == effect && giver.levels > max) {

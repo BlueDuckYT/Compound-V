@@ -18,7 +18,7 @@ public class PacketHandler {
                     new ResourceLocation(CompoundVMod.MODID, "main"))
             .serverAcceptedVersions((status) -> true)
             .clientAcceptedVersions((status) -> true)
-            .networkProtocolVersion(() -> "1.6")
+            .networkProtocolVersion(() -> "1.10")
             .simpleChannel();
 
     private static int packetId = 0;
@@ -38,6 +38,18 @@ public class PacketHandler {
                 .decoder(C2SHeldPowerPacket::new)
                 .encoder(C2SHeldPowerPacket::toBytes)
                 .consumerMainThread(C2SHeldPowerPacket::handle)
+                .add();
+
+        INSTANCE.messageBuilder(blueduck.compound_v.util.C2SScrollPacket.class, id(), NetworkDirection.PLAY_TO_SERVER)
+                .decoder(blueduck.compound_v.util.C2SScrollPacket::new)
+                .encoder(blueduck.compound_v.util.C2SScrollPacket::toBytes)
+                .consumerMainThread(blueduck.compound_v.util.C2SScrollPacket::handle)
+                .add();
+
+        INSTANCE.messageBuilder(blueduck.compound_v.util.C2SReleasePacket.class, id(), NetworkDirection.PLAY_TO_SERVER)
+                .decoder(blueduck.compound_v.util.C2SReleasePacket::new)
+                .encoder(blueduck.compound_v.util.C2SReleasePacket::toBytes)
+                .consumerMainThread(blueduck.compound_v.util.C2SReleasePacket::handle)
                 .add();
 
         INSTANCE.messageBuilder(S2CLaserSyncPacket.class, id(), NetworkDirection.PLAY_TO_CLIENT)

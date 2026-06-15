@@ -4,6 +4,7 @@ import blueduck.compound_v.Config;
 import blueduck.compound_v.keybinds.PacketHandler;
 import blueduck.compound_v.util.S2CLaserSyncPacket;
 import net.minecraft.core.BlockPos;
+import net.minecraft.util.Mth;
 import net.minecraft.core.particles.DustParticleOptions;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.level.ServerLevel;
@@ -53,6 +54,10 @@ public class LaserEyesEffect extends CompoundVEffect {
             new Vector3f(1.0f, 0.9f, 0.15f), 1.2f);
     protected static final DustParticleOptions LASER_GLOW_YELLOW = new DustParticleOptions(
             new Vector3f(0.9f, 0.75f, 0.02f), 0.6f);
+    protected static final DustParticleOptions LASER_CORE_BLACK = new DustParticleOptions(
+            new Vector3f(0.1f, 0.0f, 0.1f), 1.8f);
+    protected static final DustParticleOptions LASER_CORE_WHITE = new DustParticleOptions(
+            new Vector3f(1.0f, 1.0f, 1.0f), 1.8f);
 
     public LaserEyesEffect(MobEffectCategory category) {
         super(category);
@@ -77,6 +82,51 @@ public class LaserEyesEffect extends CompoundVEffect {
 
     protected boolean isAdvanced() {
         return false;
+    }
+
+    // ===== Laser intensity (scroll-controlled power level) =====
+    // 0.0 = harmless glow (intimidation only, no damage / no breaking) up to 1.0 = full power.
+    private String intensityKey() {
+        return isAdvanced() ? "compound_v_adv_laser_intensity" : "compound_v_laser_intensity";
+    }
+
+    /** Current intensity 0..1 for this player (defaults to full power if never set). */
+    public float getIntensity(net.minecraft.world.entity.player.Player player) {
+        if (!Config.laserIntensityAdjustable) return 1.0f; // adjustment off -> always full blast
+        var pd = player.getPersistentData();
+        if (!pd.contains(intensityKey())) return 1.0f;
+        return Mth.clamp(pd.getFloat(intensityKey()), 0.0f, 1.0f);
+    }
+
+    private void setIntensity(net.minecraft.world.entity.player.Player player, float v) {
+        player.getPersistentData().putFloat(intensityKey(), Mth.clamp(v, 0.0f, 1.0f));
+    }
+
+    @Override
+    public boolean usesScroll(ServerPlayer player) {
+        return Config.laserIntensityAdjustable;
+    }
+
+    /**
+     * Linearly interpolate a chance from a critical point up to full intensity. Below the
+     * critical point returns 0; at and above it, ramps 0..1 across [critical, 1.0]. Multiply
+     * the caller's base chance by this to get the effective chance.
+     */
+    private static float intensityRamp(float intensity, double critical) {
+        if (intensity < critical) return 0f;
+        double span = 1.0 - critical;
+        if (span <= 1.0e-4) return 1f; // critical == 1.0 -> only full power
+        return (float) Mth.clamp((intensity - critical) / span, 0.0, 1.0);
+    }
+
+    @Override
+    public void scrollAdjust(ServerPlayer player, int amplifier, ServerLevel level, int dir) {
+        if (!Config.laserIntensityAdjustable) return; // adjustment disabled -> always full blast
+        // Scroll UP = more power, DOWN = less. Step gives ~5 notches across the full range.
+        float step = (float) Config.laserIntensityScrollStep;
+        float now = getIntensity(player);
+        float next = Mth.clamp(now + dir * step, 0.0f, 1.0f);
+        setIntensity(player, next);
     }
 
     /**
@@ -106,7 +156,9 @@ public class LaserEyesEffect extends CompoundVEffect {
 
     /**
      * Rolls a new laser color for basic laser eyes.
-     * 1/200 rainbow, otherwise seeded 5-way split.
+     * 1/200 rainbow, then a rare seeded 1/50 black and 1/50 white (computed off
+     * separate slices of the same UUID+seed hash so they're per-world deterministic
+     * like the regular colors), otherwise the seeded 5-way split.
      */
     private int rollPlayerLaserColor(ServerPlayer player) {
         if (player.getRandom().nextInt(200) == 0) {
@@ -115,6 +167,16 @@ public class LaserEyesEffect extends CompoundVEffect {
         long uuidHash = player.getUUID().getMostSignificantBits() ^ player.getUUID().getLeastSignificantBits();
         long seed = player.serverLevel().getSeed();
         long hash = uuidHash * 6364136223846793005L + seed;
+
+        // Rare seeded black/white: independent 1/50 each, off separate hash slices
+        // so they're deterministic per UUID+world. Black takes precedence if both hit.
+        if (((hash >>> 8) & 0xFFFFFFL) % 50 == 0) {
+            return S2CLaserSyncPacket.COLOR_BLACK;
+        }
+        if (((hash >>> 32) & 0xFFFFFFL) % 50 == 0) {
+            return S2CLaserSyncPacket.COLOR_WHITE;
+        }
+
         int bucket = (int) (((hash >>> 4) & 0xFFFFFFL) % 5);
         return switch (bucket) {
             case 0 -> S2CLaserSyncPacket.COLOR_ORANGE;
@@ -132,8 +194,10 @@ public class LaserEyesEffect extends CompoundVEffect {
      */
     private int rollAdvancedLaserColor(ServerPlayer player) {
         int roll = player.getRandom().nextInt(200);
-        if (roll == 0) return S2CLaserSyncPacket.COLOR_RAINBOW;
-        if (roll <= 2) return S2CLaserSyncPacket.COLOR_BLUE; // rolls 1 and 2 = 2/200 = 1/100
+        if (roll == 0) return S2CLaserSyncPacket.COLOR_RAINBOW;        // 1/200
+        if (roll <= 2) return S2CLaserSyncPacket.COLOR_BLUE;           // 2/200 = 1/100
+        if (roll <= 4) return player.getRandom().nextBoolean()          // 2/200 = 1/100 (50/50 black or white)
+                ? S2CLaserSyncPacket.COLOR_BLACK : S2CLaserSyncPacket.COLOR_WHITE;
         return S2CLaserSyncPacket.COLOR_RED;
     }
 
@@ -154,6 +218,8 @@ public class LaserEyesEffect extends CompoundVEffect {
             case S2CLaserSyncPacket.COLOR_GREEN -> LASER_CORE_GREEN;
             case S2CLaserSyncPacket.COLOR_PURPLE -> LASER_CORE_PURPLE;
             case S2CLaserSyncPacket.COLOR_YELLOW -> LASER_CORE_YELLOW;
+            case S2CLaserSyncPacket.COLOR_BLACK -> LASER_CORE_BLACK;
+            case S2CLaserSyncPacket.COLOR_WHITE -> LASER_CORE_WHITE;
             default -> LASER_CORE_ORANGE;
         };
     }
@@ -199,6 +265,20 @@ public class LaserEyesEffect extends CompoundVEffect {
 
     protected void fireLaser(ServerPlayer player, int amplifier, ServerLevel level) {
         int colorIndex = getPlayerColorIndex(player);
+        float intensity = getIntensity(player);
+        // Below this, the laser is a harmless glow (intimidation): no damage, no breaking, no
+        // burn-through. The beam still renders so you can menace people with it.
+        boolean harmless = intensity < 0.05f;
+
+        // Drawback (config): can't fire while running. If moving faster than the threshold, the
+        // laser drops to intimidation-only regardless of intensity.
+        if (Config.laserDisabledWhileMoving) {
+            Vec3 vel = player.getDeltaMovement();
+            double horizSpeed = Math.sqrt(vel.x * vel.x + vel.z * vel.z);
+            if (horizSpeed > Config.laserMoveSpeedThreshold) {
+                harmless = true;
+            }
+        }
 
         Vec3 eyePos = player.getEyePosition(1.0F);
         Vec3 lookVec = player.getLookAngle();
@@ -222,7 +302,8 @@ public class LaserEyesEffect extends CompoundVEffect {
             BlockPos hitBlockPos = blockHit.getBlockPos();
             BlockState hitState = level.getBlockState(hitBlockPos);
 
-            if (isSoftBlock(hitState) && level.random.nextFloat() < 0.625f) {
+            float fireRamp = intensityRamp(intensity, Config.laserFireCriticalIntensity);
+            if (!harmless && fireRamp > 0f && isSoftBlock(hitState) && level.random.nextFloat() < 0.625f * fireRamp) {
                 // Burn through: destroy the block and continue
                 level.destroyBlock(hitBlockPos, Config.laserBlockBreakDrops);
                 level.sendParticles(ParticleTypes.FLAME,
@@ -256,17 +337,19 @@ public class LaserEyesEffect extends CompoundVEffect {
                 Vec3 closestOnBeam = eyePos.add(lookVec.scale(dot));
                 double distToBeam = closestOnBeam.distanceTo(target.position().add(0, target.getBbHeight() / 2, 0));
                 if (distToBeam < target.getBbWidth() + 0.5) {
-                    if (isDamageTick) {
-                        applyLaserDamage(player, target, level);
+                    if (isDamageTick && !harmless) {
+                        applyLaserDamage(player, target, level, intensity);
                     }
                 }
             }
         }
 
         // --- Block breaking along beam path (if enabled) ---
-        boolean breakBlocks = isAdvanced() ? Config.laserAdvancedBreakBlocks : Config.laserBasicBreakBlocks;
+        float breakRamp = intensityRamp(intensity, Config.laserBreakCriticalIntensity);
+        boolean breakBlocks = (isAdvanced() ? Config.laserAdvancedBreakBlocks : Config.laserBasicBreakBlocks)
+                && !harmless && breakRamp > 0f;
         if (breakBlocks && isDamageTick) {
-            double breakChance = Config.laserBlockBreakChance;
+            double breakChance = Config.laserBlockBreakChance * breakRamp; // ramps in from critical point
             boolean drops = Config.laserBlockBreakDrops;
             double step = 1.0;
             // Extend slightly past beam end to include the hit block
@@ -289,7 +372,9 @@ public class LaserEyesEffect extends CompoundVEffect {
         }
 
         // --- Fire starting ---
-        if (hitSolidBlock && player.getRandom().nextDouble() < getFireChance() / 4.0) {
+        float fireStartRamp = intensityRamp(intensity, Config.laserFireCriticalIntensity);
+        if (!harmless && fireStartRamp > 0f && hitSolidBlock
+                && player.getRandom().nextDouble() < (getFireChance() / 4.0) * fireStartRamp) {
             // Find the block face we hit and try to place fire adjacent
             BlockHitResult fireCheck = level.clip(new ClipContext(
                     eyePos, endPos, ClipContext.Block.OUTLINE, ClipContext.Fluid.NONE, player));
@@ -302,8 +387,8 @@ public class LaserEyesEffect extends CompoundVEffect {
             }
         }
 
-        // --- Impact particles ---
-        if (hitSolidBlock) {
+        // --- Impact particles --- (skip in harmless/intimidation mode — they block vision)
+        if (hitSolidBlock && !harmless) {
             level.sendParticles(ParticleTypes.FLAME,
                     hitPos.x, hitPos.y, hitPos.z, 3, 0.1, 0.1, 0.1, 0.02);
             level.sendParticles(ParticleTypes.SMOKE,
@@ -311,16 +396,29 @@ public class LaserEyesEffect extends CompoundVEffect {
         }
 
         // --- Visual mode ---
-        if (Config.laserVisualMode == Config.LaserVisualMode.BEAM) {
+        if (harmless) {
+            // Intimidation mode: send the REAL hit point so the eye beams converge on the actual
+            // target (block/mob) exactly like a full laser — but flagged with a tiny intensity
+            // (0.02) that tells the renderer to TRUNCATE the drawn beam to a very short length.
+            // So the beams angle correctly toward what you're aiming at, but only a short glint
+            // is drawn from the eyes.
+            if (Config.laserVisualMode == Config.LaserVisualMode.BEAM) {
+                PacketHandler.sendToTrackingAndSelf(
+                        new S2CLaserSyncPacket(player.getId(), hitPos.x, hitPos.y, hitPos.z, colorIndex, 0.02f),
+                        player);
+            }
+        } else if (Config.laserVisualMode == Config.LaserVisualMode.BEAM) {
+            // Beam girth scales with power; floored so it's always clearly visible.
+            float beamIntensity = Math.max(0.25f, intensity);
             PacketHandler.sendToTrackingAndSelf(
-                    new S2CLaserSyncPacket(player.getId(), hitPos.x, hitPos.y, hitPos.z, colorIndex),
+                    new S2CLaserSyncPacket(player.getId(), hitPos.x, hitPos.y, hitPos.z, colorIndex, beamIntensity),
                     player);
         } else {
             spawnBeamParticles(level, eyePos, hitPos, beamLength, colorIndex);
         }
 
-        // --- Sound ---
-        if (player.tickCount % 5 == 0) {
+        // --- Sound --- (silent in harmless/intimidation mode — no firing hum)
+        if (!harmless && player.tickCount % 5 == 0) {
             level.playSound(null, player.getX(), player.getY(), player.getZ(),
                     SoundEvents.BEACON_AMBIENT, SoundSource.PLAYERS, 0.4F, 2.0F);
         }
@@ -331,8 +429,8 @@ public class LaserEyesEffect extends CompoundVEffect {
      * Shields block but melt. Fire resistance gives 70% reduction.
      * Uses playerAttack so armor applies and kills credit the player.
      */
-    protected void applyLaserDamage(ServerPlayer player, LivingEntity target, ServerLevel level) {
-        float damage = getLaserDamage();
+    protected void applyLaserDamage(ServerPlayer player, LivingEntity target, ServerLevel level, float intensity) {
+        float damage = getLaserDamage() * Mth.clamp(intensity, 0.0f, 1.0f);
         boolean advanced = isAdvanced();
         boolean pushEnabled = advanced ? Config.laserAdvancedPushEnabled : Config.laserBasicPushEnabled;
         double pushStrength = advanced ? Config.laserAdvancedPushStrength : Config.laserBasicPushStrength;

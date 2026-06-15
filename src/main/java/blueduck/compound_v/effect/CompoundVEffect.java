@@ -36,6 +36,17 @@ public class CompoundVEffect extends MobEffect {
         return false;
     }
 
+    /**
+     * Stat suppression is narrower than power suppression. The NULLIFIED effect
+     * disables active and passive *powers* (V-key abilities, flight, laser AI, etc.)
+     * but deliberately leaves the holder's passive *stat boosts* — strength,
+     * damage reduction, knockback — intact. Only the virus fully suppresses stats.
+     */
+    public static boolean areStatsSuppressed(LivingEntity entity) {
+        boolean isPlayer = entity instanceof ServerPlayer;
+        return blueduck.compound_v.util.VirusHelper.hasVirus(entity, isPlayer);
+    }
+
     public static boolean areIncompatible(net.minecraft.world.effect.MobEffect a, net.minecraft.world.effect.MobEffect b) {
         if (isFlightRedundancy(a, b) || isFlightRedundancy(b, a)) return true;
         return false;
@@ -60,4 +71,16 @@ public class CompoundVEffect extends MobEffect {
     public double getKnockbackDealtMultiplier(int amplifier) { return getPowerTier().getKnockbackDealtMultiplier(amplifier); }
     public void activate(ServerPlayer player, int amplifier, ServerLevel level) {}
     public void holdActivate(ServerPlayer player, int amplifier, ServerLevel level) {}
+
+    /** Called the instant the power key is released (key-up edge). Default: no-op. */
+    public void onRelease(ServerPlayer player, int amplifier, ServerLevel level) {}
+
+    /**
+     * Whether this power responds to the scroll wheel (so the client knows to capture
+     * scroll input instead of changing the hotbar). Default false.
+     */
+    public boolean usesScroll(ServerPlayer player) { return false; }
+
+    /** Called when a scroll-aware power is active and the player scrolls. dir is +1 (up) or -1 (down). */
+    public void scrollAdjust(ServerPlayer player, int amplifier, ServerLevel level, int dir) {}
 }

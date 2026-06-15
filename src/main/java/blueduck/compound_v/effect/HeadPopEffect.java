@@ -171,68 +171,48 @@ public class HeadPopEffect extends CompoundVEffect {
         target.hurt(player.damageSources().indirectMagic(player, player), POP_DAMAGE);
 
         boolean killed = !target.isAlive();
+        spawnHeadPopBurst(level, headX, headY, headZ, target.getY(), killed, player.getRandom());
+    }
 
-        // === BLOOD EXPLOSION ===
+    /** Shared head-pop blood burst + sound, reused by the Uncontrolled Head Pop negative effect. */
+    public static void spawnHeadPopBurst(ServerLevel level, double headX, double headY, double headZ,
+                                         double feetY, boolean killed, net.minecraft.util.RandomSource random) {
 
         // Core burst: dense bright blood at head
-        level.sendParticles(BLOOD_BRIGHT,
-                headX, headY, headZ,
-                80, 0.3, 0.3, 0.3, 0.2);
-
+        level.sendParticles(BLOOD_BRIGHT, headX, headY, headZ, 80, 0.3, 0.3, 0.3, 0.2);
         // Dark blood spray — wider spread
-        level.sendParticles(BLOOD_DARK,
-                headX, headY, headZ,
-                120, 0.8, 0.6, 0.8, 0.15);
-
+        level.sendParticles(BLOOD_DARK, headX, headY, headZ, 120, 0.8, 0.6, 0.8, 0.15);
         // Blood mist cloud
-        level.sendParticles(BLOOD_MIST,
-                headX, headY - 0.3, headZ,
-                60, 1.0, 0.8, 1.0, 0.08);
+        level.sendParticles(BLOOD_MIST, headX, headY - 0.3, headZ, 60, 1.0, 0.8, 1.0, 0.08);
+        // Slime chunks
+        level.sendParticles(ParticleTypes.ITEM_SLIME, headX, headY, headZ, 25, 0.5, 0.4, 0.5, 0.15);
 
-        // Vanilla redstone dust for extra red splatter
-        level.sendParticles(ParticleTypes.ITEM_SLIME,
-                headX, headY, headZ,
-                25, 0.5, 0.4, 0.5, 0.15);
-
-        // Outward directional blood sprays (8 directions)
+        // Outward directional blood sprays
         for (int i = 0; i < 12; i++) {
             double angle = (2 * Math.PI * i) / 12.0;
             for (double r = 0.5; r < 2.5; r += 0.6) {
                 double px = headX + Math.cos(angle) * r;
                 double pz = headZ + Math.sin(angle) * r;
-                level.sendParticles(BLOOD_DARK,
-                        px, headY - r * 0.3, pz,
-                        2, 0.1, 0.15, 0.1, 0.03);
+                level.sendParticles(BLOOD_DARK, px, headY - r * 0.3, pz, 2, 0.1, 0.15, 0.1, 0.03);
             }
         }
-
         // Dripping aftermath
         for (int i = 0; i < 8; i++) {
-            double ox = (player.getRandom().nextDouble() - 0.5) * 1.5;
-            double oz = (player.getRandom().nextDouble() - 0.5) * 1.5;
-            level.sendParticles(ParticleTypes.DRIPPING_LAVA,
-                    headX + ox, headY + 0.2, headZ + oz,
-                    1, 0.0, 0.0, 0.0, 0.0);
+            double ox = (random.nextDouble() - 0.5) * 1.5;
+            double oz = (random.nextDouble() - 0.5) * 1.5;
+            level.sendParticles(ParticleTypes.DRIPPING_LAVA, headX + ox, headY + 0.2, headZ + oz, 1, 0.0, 0.0, 0.0, 0.0);
         }
-
-        // If killed: extra dramatic burst
         if (killed) {
-            level.sendParticles(BLOOD_BRIGHT,
-                    headX, headY, headZ,
-                    60, 1.5, 1.2, 1.5, 0.25);
-            level.sendParticles(BLOOD_DARK,
-                    headX, headY - 0.5, headZ,
-                    80, 2.0, 1.5, 2.0, 0.12);
+            level.sendParticles(BLOOD_BRIGHT, headX, headY, headZ, 60, 1.5, 1.2, 1.5, 0.25);
+            level.sendParticles(BLOOD_DARK, headX, headY - 0.5, headZ, 80, 2.0, 1.5, 2.0, 0.12);
         }
 
-        // --- Sound: pop + wet splatter ---
-        level.playSound(null, headX, target.getY(), headZ,
+        level.playSound(null, headX, feetY, headZ,
                 SoundEvents.GENERIC_EXPLODE, SoundSource.HOSTILE, 0.7F, 1.8F);
-        level.playSound(null, headX, target.getY(), headZ,
+        level.playSound(null, headX, feetY, headZ,
                 SoundEvents.HONEY_BLOCK_BREAK, SoundSource.HOSTILE, 1.2F, 0.4F);
-        level.playSound(null, headX, target.getY(), headZ,
-                SoundEvents.SLIME_BLOCK_BREAK, SoundSource.HOSTILE, 1.0F, 0.6F);
     }
+
 
     private void resetFocus(UUID uuid, ServerLevel level) {
         FocusData focus = focusMap.remove(uuid);

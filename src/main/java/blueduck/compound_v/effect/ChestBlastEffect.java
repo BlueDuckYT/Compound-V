@@ -116,15 +116,15 @@ public class ChestBlastEffect extends CompoundVEffect {
             return;
         }
 
-        if (player.isShiftKeyDown()) {
-            // Sneak + V: nova burst
+        if (player.isShiftKeyDown() && blueduck.compound_v.Config.chestBlastNovaEnabled) {
+            // Sneak + V: nova burst (when enabled)
             state.state = BlastState.NOVA_CHARGING;
             state.ticksRemaining = blueduck.compound_v.Config.chestBlastNovaChargeTime;
 
             level.playSound(null, player.getX(), player.getY(), player.getZ(),
                     SoundEvents.RESPAWN_ANCHOR_CHARGE, SoundSource.PLAYERS, 2.0F, 0.3F);
         } else {
-            // Standing + V: beam blast
+            // Standing + V (or sneak+V when nova disabled): beam blast
             state.state = BlastState.CHARGING;
             state.ticksRemaining = blueduck.compound_v.Config.chestBlastChargeTime;
 
@@ -515,12 +515,17 @@ public class ChestBlastEffect extends CompoundVEffect {
     }
 
     private static void tryBreakBlock(ServerLevel level, net.minecraft.core.BlockPos pos, ServerPlayer player, double chance) {
-        if (player.getRandom().nextDouble() >= chance) return;
+        // Beam block-breaking uses the beam's drop config.
+        tryBreakBlock(level, pos, player, chance, blueduck.compound_v.Config.chestBlastBlockBreakDrops);
+    }
+
+    private static void tryBreakBlock(ServerLevel level, net.minecraft.core.BlockPos pos, ServerPlayer player, double chance, boolean dropItems) {
+        if (chance < 1.0 && player.getRandom().nextDouble() >= chance) return;
         net.minecraft.world.level.block.state.BlockState state = level.getBlockState(pos);
         if (state.isAir()) return;
         float hardness = state.getDestroySpeed(level, pos);
-        if (hardness < 0 || hardness >= 50) return;
-        level.destroyBlock(pos, blueduck.compound_v.Config.chestBlastBlockBreakDrops, player);
+        if (hardness < 0 || hardness >= 50) return; // unbreakable / very high blast resistance
+        level.destroyBlock(pos, dropItems, player);
     }
 
     // === Nova Burst (sneak + V) ===
@@ -532,15 +537,52 @@ public class ChestBlastEffect extends CompoundVEffect {
         player.displayClientMessage(
                 net.minecraft.network.chat.Component.literal("§c§lNova charging: " + secondsLeft + "s"), true);
 
-        // Intensifying inward particles — pulling energy toward the player
-        int particleCount = (int) (3 + chargePercent * 15);
         double radius = blueduck.compound_v.Config.chestBlastNovaRadius;
-        level.sendParticles(CHARGE_PARTICLE,
-                player.getX(), player.getY() + 1.0, player.getZ(),
-                particleCount, radius * 0.5 * (1 - chargePercent), 0.5, radius * 0.5 * (1 - chargePercent), 0.02);
-        level.sendParticles(ParticleTypes.ELECTRIC_SPARK,
-                player.getX(), player.getY() + 1.0, player.getZ(),
-                (int) (2 + chargePercent * 8), 0.5, 0.5, 0.5, 0.05 + chargePercent * 0.1);
+        double chestY = player.getY() + player.getBbHeight() * 0.6;
+
+        // Spiraling inward particles that tighten toward the player as charge builds
+        // (mirrors the beam charge-up for a consistent "winding up" read).
+        int spiralCount = (int) (3 + chargePercent * 14);
+        if (player.tickCount % 2 == 0) {
+            for (int i = 0; i < spiralCount; i++) {
+                double angle = (player.tickCount * 0.3 + i * (Math.PI * 2.0 / spiralCount)) % (Math.PI * 2);
+                double r = (radius * 0.6) * (1.0 - chargePercent * 0.6); // tightens as it charges
+                double px = player.getX() + Math.cos(angle) * r;
+                double pz = player.getZ() + Math.sin(angle) * r;
+                level.sendParticles(CHARGE_PARTICLE, px, chestY, pz, 1, 0.05, 0.05, 0.05, 0.01);
+            }
+        }
+
+        // Ambient drift particles pulled inward from the surrounding area.
+        if (player.tickCount % 4 == 0) {
+            int driftCount = (int) (2 + chargePercent * 5);
+            for (int i = 0; i < driftCount; i++) {
+                double angle = player.getRandom().nextDouble() * Math.PI * 2;
+                double r = radius * 0.5 + player.getRandom().nextDouble() * radius * 0.5;
+                double py = chestY - 0.6 + player.getRandom().nextDouble() * 1.2;
+                double px = player.getX() + Math.cos(angle) * r;
+                double pz = player.getZ() + Math.sin(angle) * r;
+                level.sendParticles(BLAST_EDGE, px, py, pz, 1, 0.0, 0.0, 0.0, 0.0);
+            }
+        }
+
+        // Electric sparks intensify past the halfway point.
+        if (chargePercent > 0.5 && player.tickCount % 5 == 0) {
+            double angle = player.getRandom().nextDouble() * Math.PI * 2;
+            double r = 0.5 + player.getRandom().nextDouble() * 1.2;
+            level.sendParticles(ParticleTypes.ELECTRIC_SPARK,
+                    player.getX() + Math.cos(angle) * r,
+                    chestY + (player.getRandom().nextDouble() - 0.5) * 0.6,
+                    player.getZ() + Math.sin(angle) * r,
+                    (int) (1 + chargePercent * 3), 0.05, 0.05, 0.05, 0.03);
+        }
+
+        // Growing core glow centered on the player.
+        if (player.tickCount % 3 == 0 && chargePercent > 0.3) {
+            level.sendParticles(BLAST_CORE,
+                    player.getX(), chestY, player.getZ(),
+                    (int) (chargePercent * 6), 0.2, 0.2, 0.2, 0.01);
+        }
 
         // Rumble sound as charge builds
         if (state.ticksRemaining % 20 == 0) {
@@ -555,56 +597,21 @@ public class ChestBlastEffect extends CompoundVEffect {
 
     private void detonateNova(ServerPlayer player, ServerLevel level, PlayerBlastState state) {
         double radius = blueduck.compound_v.Config.chestBlastNovaRadius;
-        float damage = (float) blueduck.compound_v.Config.chestBlastNovaDamage;
-        double knockback = blueduck.compound_v.Config.chestBlastNovaKnockback;
 
-        // === Heavy visual and audio ===
-        // Explosion particle burst
-        level.sendParticles(ParticleTypes.EXPLOSION_EMITTER,
-                player.getX(), player.getY() + 1.0, player.getZ(),
-                3, 0.5, 0.5, 0.5, 0.0);
-        level.sendParticles(BLAST_CORE,
-                player.getX(), player.getY() + 1.0, player.getZ(),
-                40, radius * 0.3, 0.5, radius * 0.3, 0.3);
-        level.sendParticles(ParticleTypes.FLASH,
-                player.getX(), player.getY() + 1.0, player.getZ(),
-                5, 0.1, 0.1, 0.1, 0.0);
-        level.sendParticles(ParticleTypes.ELECTRIC_SPARK,
-                player.getX(), player.getY() + 1.0, player.getZ(),
-                60, radius * 0.5, 1.0, radius * 0.5, 0.2);
-
-        level.playSound(null, player.getX(), player.getY(), player.getZ(),
-                SoundEvents.GENERIC_EXPLODE, SoundSource.PLAYERS, 3.0F, 0.5F);
-        level.playSound(null, player.getX(), player.getY(), player.getZ(),
-                SoundEvents.LIGHTNING_BOLT_THUNDER, SoundSource.PLAYERS, 2.0F, 0.3F);
-
-        // === Damage and depower entities ===
-        AABB searchBox = player.getBoundingBox().inflate(radius);
-        for (net.minecraft.world.entity.Entity e : level.getEntities(player, searchBox,
-                ent -> ent instanceof LivingEntity && ent.isAlive() && ent != player)) {
-            LivingEntity target = (LivingEntity) e;
-            double dist = target.distanceTo(player);
-            if (dist > radius) continue;
-
-            // Check if target has Compound V powers
-            boolean hasCompV = false;
-            for (MobEffectInstance inst : target.getActiveEffects()) {
-                if (inst.getEffect() instanceof CompoundVEffect) { hasCompV = true; break; }
-            }
-
-            // Zero I-frames and deal damage
-            target.invulnerableTime = 0;
-            target.hurt(player.damageSources().playerAttack(player), damage);
-
-            // Knockback away from player — scaled by proximity
-            double distFactor = 1.0 - (dist / radius); // closer = stronger
-            Vec3 pushDir = target.position().subtract(player.position()).normalize();
-            pushDir = new Vec3(pushDir.x, 0.3, pushDir.z).normalize(); // slight upward launch
-            target.setDeltaMovement(target.getDeltaMovement().add(pushDir.scale(knockback * distFactor)));
-            target.hurtMarked = true;
-
-            // Strip powers from powered entities
-            if (hasCompV && blueduck.compound_v.Config.chestBlastStripsPowers) {
+        // Strip powers from nearby powered entities before the blast (the CV-specific
+        // behavior vanilla can't do). Damage, knockback, particles, sound, and block
+        // destruction are all handled by the standard explosion below.
+        if (blueduck.compound_v.Config.chestBlastStripsPowers) {
+            AABB searchBox = player.getBoundingBox().inflate(radius);
+            for (net.minecraft.world.entity.Entity e : level.getEntities(player, searchBox,
+                    ent -> ent instanceof LivingEntity && ent.isAlive() && ent != player)) {
+                LivingEntity target = (LivingEntity) e;
+                if (target.distanceTo(player) > radius) continue;
+                boolean hasCompV = false;
+                for (MobEffectInstance inst : target.getActiveEffects()) {
+                    if (inst.getEffect() instanceof CompoundVEffect) { hasCompV = true; break; }
+                }
+                if (!hasCompV) continue;
                 boolean isInvincible = target.hasEffect(EffectReg.INVINCIBLE.get());
                 boolean canStrip = !isInvincible || blueduck.compound_v.Config.chestBlastStripsInvincible;
                 if (canStrip) {
@@ -616,24 +623,24 @@ public class ChestBlastEffect extends CompoundVEffect {
             }
         }
 
-        // === Sphere block destruction ===
-        int blockRadius = (int) Math.ceil(radius);
-        net.minecraft.core.BlockPos center = player.blockPosition();
-        for (int dx = -blockRadius; dx <= blockRadius; dx++) {
-            for (int dy = -blockRadius; dy <= blockRadius; dy++) {
-                for (int dz = -blockRadius; dz <= blockRadius; dz++) {
-                    double distSq = dx * dx + dy * dy + dz * dz;
-                    double maxDistSq = radius * radius;
-                    if (distSq > maxDistSq) continue;
-
-                    // Core (inner 60%): near-guaranteed break
-                    // Edge (outer 40%): chance-based for rough look
-                    double distRatio = Math.sqrt(distSq) / radius;
-                    double chance = distRatio < 0.6 ? 0.95 : 0.4 * (1.0 - distRatio);
-                    tryBreakBlock(level, center.offset(dx, dy, dz), player, chance);
-                }
-            }
+        // Standard explosion: vanilla handles damage, knockback, particles and sound.
+        // Block destruction follows the nova block-break config; drops follow the
+        // drop config (DESTROY drops with the usual ~1/power fraction; DESTROY_WITH_DECAY
+        // drops less). When block breaking is disabled, interaction NONE keeps the boom
+        // without terrain damage.
+        net.minecraft.world.level.Level.ExplosionInteraction interaction;
+        if (!blueduck.compound_v.Config.chestBlastNovaBreaksBlocks) {
+            interaction = net.minecraft.world.level.Level.ExplosionInteraction.NONE;
+        } else {
+            interaction = net.minecraft.world.level.Level.ExplosionInteraction.TNT;
         }
+
+        double cx = player.getX();
+        double cy = player.getY() + player.getBbHeight() * 0.5;
+        double cz = player.getZ();
+        float power = (float) blueduck.compound_v.Config.chestBlastNovaPower;
+        level.explode(player, player.damageSources().playerAttack(player), null,
+                cx, cy, cz, power, false, interaction);
 
         // === Cooldown and reset (shared with beam) ===
         state.state = BlastState.IDLE;

@@ -4,9 +4,12 @@ import blueduck.compound_v.CompoundVMod;
 import blueduck.compound_v.util.S2CLaserSyncPacket;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.blaze3d.vertex.VertexConsumer;
+import com.mojang.blaze3d.vertex.DefaultVertexFormat;
+import com.mojang.blaze3d.vertex.VertexFormat;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.RenderStateShard;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
@@ -34,6 +37,39 @@ public class LaserBeamRenderer {
     private static final float GLOW_HALF = 0.12f;
     private static final float OUTER_HALF = 0.2f;
 
+    /**
+     * Opaque, depth-writing, texture-free render type used for the black-hole void
+     * core. Uses POSITION_COLOR (matching addQuad's vertex writes — no normal/UV),
+     * with no blending so the black actually occludes the world behind it. Defined
+     * via a tiny RenderType subclass because RenderType.create is protected.
+     */
+    private static final RenderType VOID_CORE = VoidCoreType.create();
+
+    private static final class VoidCoreType extends RenderType {
+        // Never instantiated; exists only to expose the protected static
+        // RenderType.create / CompositeState API to this class.
+        private VoidCoreType() {
+            super(null, null, null, 0, false, false, null, null);
+        }
+
+        static RenderType create() {
+            return RenderType.create(
+                    "compound_v_void_core",
+                    DefaultVertexFormat.POSITION_COLOR,
+                    VertexFormat.Mode.QUADS,
+                    256,
+                    false,
+                    false,
+                    RenderType.CompositeState.builder()
+                            .setShaderState(RenderStateShard.POSITION_COLOR_SHADER)
+                            .setTransparencyState(RenderStateShard.NO_TRANSPARENCY)
+                            .setCullState(RenderStateShard.CULL)
+                            .setDepthTestState(RenderStateShard.LEQUAL_DEPTH_TEST)
+                            .setWriteMaskState(RenderStateShard.COLOR_DEPTH_WRITE)
+                            .createCompositeState(false));
+        }
+    }
+
     // --- Color palettes per colorIndex ---
     // Each row: { white-hot core R,G,B, mid glow R,G,B, outer glow R,G,B }
     private static final float[][] COLORS = {
@@ -53,6 +89,10 @@ public class LaserBeamRenderer {
             { 1.0f, 0.95f, 0.7f,   1.0f, 0.75f, 0.15f,  1.0f, 0.5f, 0.05f },
             // 7 = Rainbow (cycles through hues)
             { 1.0f, 1.0f, 1.0f,   1.0f, 0.0f, 0.0f,   1.0f, 0.0f, 0.0f },
+            // 8 = Black (black-hole: pitch-black core handled specially, violet accretion glow)
+            { 0.0f, 0.0f, 0.0f,   0.45f, 0.05f, 0.65f,   0.6f, 0.1f, 0.95f },
+            // 9 = White (bright white core, silver edge)
+            { 1.0f, 1.0f, 1.0f,   0.95f, 0.95f, 1.0f,  0.85f, 0.85f, 0.9f },
     };
 
     /** Compute cycling rainbow colors from game time. */
@@ -175,9 +215,60 @@ public class LaserBeamRenderer {
                         EYE_Y_OFFSET + forward.y,
                         rightZ * EYE_SPACING + forward.z);
 
-                renderDualBeam(consumer, matrix, leftEye, rightEye, hitPos,
+                // Intimidation mode (flagged by tiny intensity): render two SHORT stubs instead
+                // of a full beam, in ALL views. The stubs run along the player's look direction
+                // (stable — avoids the jitter from each eye->hitPos vector swinging while moving).
+                //   * Third person: the two stubs are PARALLEL (same lookDir step from each eye).
+                //   * First person: the two stubs are SLIGHTLY NON-PARALLEL — each angled a touch
+                //     outward — so they read as two distinct beams from the camera rather than one.
+                Vec3 leftTarget = hitPos;
+                Vec3 rightTarget = hitPos;
+                Vec3 leftStart = leftEye;
+                Vec3 rightStart = rightEye;
+                boolean intimidation = info.intensity <= 0.05f;
+                if (intimidation) {
+                    boolean firstPerson = player == mc.player
+                            && mc.options.getCameraType().isFirstPerson();
+                    // First person reads better a touch shorter; third person a bit longer.
+                    final double STUB_LEN = firstPerson ? 0.5 : 0.6;
+
+                    // Start the stubs at the real eye positions so they're properly separated
+                    // (not squeezed into one). leftStart/rightStart already = leftEye/rightEye.
+                    Vec3 step = lookDir.scale(STUB_LEN);
+                    if (firstPerson) {
+                        // Gentle INWARD splay so they angle slightly toward each other.
+                        Vec3 rightDir = new Vec3(-Math.cos(yawRad), 0, -Math.sin(yawRad)).normalize();
+                        Vec3 splay = rightDir.scale(STUB_LEN * 0.07);
+                        leftTarget = leftStart.add(step).add(splay);
+                        rightTarget = rightStart.add(step).subtract(splay);
+                    } else {
+                        // Third person: parallel stubs, nudged up ~half a pixel (1px = 1/16 block).
+                        Vec3 up = new Vec3(0, 0.03, 0);
+                        leftStart = leftStart.add(up);
+                        rightStart = rightStart.add(up);
+                        leftTarget = leftStart.add(step);
+                        rightTarget = rightStart.add(step);
+                    }
+                }
+
+                // Scale beam girth by laser intensity: a low-power "glow" is a thin wisp, full
+                // power is the full beam. Keep a floor so it's always visible.
+                float iScale = 0.35f + 0.65f * Math.max(0f, Math.min(1f, info.intensity));
+                float coreH = CORE_HALF * iScale;
+                float glowH = GLOW_HALF * iScale;
+                float outerH = OUTER_HALF * iScale;
+
+                if (info.colorIndex == S2CLaserSyncPacket.COLOR_BLACK) {
+                    renderDualBlackHole(bufferSource, matrix,
+                            leftStart, rightStart, leftTarget, rightTarget,
+                            cr, cg, cb, gr, gg, gb, flicker, glowFlicker,
+                            coreH, glowH, outerH);
+                    consumer = bufferSource.getBuffer(RenderType.lightning());
+                } else {
+                renderDualBeam(consumer, matrix, leftStart, rightStart, leftTarget, rightTarget,
                         wr, wg, wb, cr, cg, cb, gr, gg, gb, flicker, glowFlicker,
-                        CORE_HALF, GLOW_HALF, OUTER_HALF);
+                        coreH, glowH, outerH);
+                }
                 }
             } else {
                 // --- Mob rendering ---
@@ -237,9 +328,17 @@ public class LaserBeamRenderer {
                 float mobGlow = GLOW_HALF * 1.1f * mobScale;
                 float mobOuter = OUTER_HALF * 1.0f * mobScale;
 
-                renderDualBeam(consumer, matrix, leftEye, rightEye, hitPos,
+                if (info.colorIndex == S2CLaserSyncPacket.COLOR_BLACK) {
+                    renderDualBlackHole(bufferSource, matrix,
+                            leftEye, rightEye, hitPos, hitPos,
+                            cr, cg, cb, gr, gg, gb, flicker, glowFlicker,
+                            mobCore, mobGlow, mobOuter);
+                    consumer = bufferSource.getBuffer(RenderType.lightning());
+                } else {
+                renderDualBeam(consumer, matrix, leftEye, rightEye, hitPos, hitPos,
                         wr, wg, wb, cr, cg, cb, gr, gg, gb, flicker, glowFlicker,
                         mobCore, mobGlow, mobOuter);
+                }
                 }
             }
 
@@ -250,24 +349,62 @@ public class LaserBeamRenderer {
     }
 
     /**
+     * Renders dual "black-hole" beams. The core is drawn as an OPAQUE pitch-black
+     * tube in a depth-writing, non-additive render type (RenderType.leash) so it
+     * genuinely occludes the world behind it and reads as a true void — additive
+     * blending alone can never produce black. A bright violet accretion halo is
+     * then layered additively (lightning) around the void.
+     *
+     * @param cr,cg,cb inner accretion (violet) color
+     * @param gr,gg,gb outer accretion (violet) color
+     */
+    private static void renderDualBlackHole(MultiBufferSource.BufferSource bufferSource, Matrix4f matrix,
+                                            Vec3 leftEye, Vec3 rightEye, Vec3 leftTarget, Vec3 rightTarget,
+                                            float cr, float cg, float cb,
+                                            float gr, float gg, float gb,
+                                            float flicker, float glowFlicker,
+                                            float coreHalf, float glowHalf, float outerHalf) {
+        // --- 1. Opaque pitch-black void core (occludes scenery) ---
+        VertexConsumer opaque = bufferSource.getBuffer(VOID_CORE);
+        // Slightly fatter than a normal core so the void is clearly visible.
+        float voidHalf = coreHalf * 1.6f;
+        renderBeaconBeam(opaque, matrix, leftEye, leftTarget, 0.0f, 0.0f, 0.0f, 1.0f, voidHalf);
+        renderBeaconBeam(opaque, matrix, rightEye, rightTarget, 0.0f, 0.0f, 0.0f, 1.0f, voidHalf);
+        // Flush the opaque pass now so depth is written before the additive halo.
+        bufferSource.endBatch(VOID_CORE);
+
+        // --- 2. Violet accretion halo (additive, wraps the void) ---
+        VertexConsumer glow = bufferSource.getBuffer(RenderType.lightning());
+        // Inner halo: bright violet hugging the void edge
+        renderBeaconBeam(glow, matrix, leftEye, leftTarget, cr, cg, cb, 0.85f * flicker, glowHalf);
+        renderBeaconBeam(glow, matrix, rightEye, rightTarget, cr, cg, cb, 0.85f * flicker, glowHalf);
+        // Outer halo: softer, wider violet bloom
+        renderBeaconBeam(glow, matrix, leftEye, leftTarget, gr, gg, gb, 0.3f * glowFlicker, outerHalf);
+        renderBeaconBeam(glow, matrix, rightEye, rightTarget, gr, gg, gb, 0.3f * glowFlicker, outerHalf);
+        bufferSource.endBatch(RenderType.lightning());
+    }
+
+    /**
      * Renders dual beams (left eye + right eye), each with 3 layers.
      */
     private static void renderDualBeam(VertexConsumer consumer, Matrix4f matrix,
-                                        Vec3 leftEye, Vec3 rightEye, Vec3 hitPos,
+                                        Vec3 leftEye, Vec3 rightEye, Vec3 leftTarget, Vec3 rightTarget,
                                         float wr, float wg, float wb,
                                         float cr, float cg, float cb,
                                         float gr, float gg, float gb,
                                         float flicker, float glowFlicker,
                                         float coreHalf, float glowHalf, float outerHalf) {
+        // Each eye aims at its own target (normally both = the hit point, so they converge;
+        // in intimidation mode each is a short clip along that same aim direction).
         // Left eye beam (3 layers)
-        renderBeaconBeam(consumer, matrix, leftEye, hitPos, wr, wg, wb, 1.0f * flicker, coreHalf);
-        renderBeaconBeam(consumer, matrix, leftEye, hitPos, cr, cg, cb, 0.7f * flicker, glowHalf);
-        renderBeaconBeam(consumer, matrix, leftEye, hitPos, gr, gg, gb, 0.2f * glowFlicker, outerHalf);
+        renderBeaconBeam(consumer, matrix, leftEye, leftTarget, wr, wg, wb, 1.0f * flicker, coreHalf);
+        renderBeaconBeam(consumer, matrix, leftEye, leftTarget, cr, cg, cb, 0.7f * flicker, glowHalf);
+        renderBeaconBeam(consumer, matrix, leftEye, leftTarget, gr, gg, gb, 0.2f * glowFlicker, outerHalf);
 
         // Right eye beam (3 layers)
-        renderBeaconBeam(consumer, matrix, rightEye, hitPos, wr, wg, wb, 1.0f * flicker, coreHalf);
-        renderBeaconBeam(consumer, matrix, rightEye, hitPos, cr, cg, cb, 0.7f * flicker, glowHalf);
-        renderBeaconBeam(consumer, matrix, rightEye, hitPos, gr, gg, gb, 0.2f * glowFlicker, outerHalf);
+        renderBeaconBeam(consumer, matrix, rightEye, rightTarget, wr, wg, wb, 1.0f * flicker, coreHalf);
+        renderBeaconBeam(consumer, matrix, rightEye, rightTarget, cr, cg, cb, 0.7f * flicker, glowHalf);
+        renderBeaconBeam(consumer, matrix, rightEye, rightTarget, gr, gg, gb, 0.2f * glowFlicker, outerHalf);
     }
 
     /**
@@ -300,6 +437,11 @@ public class LaserBeamRenderer {
         addQuad(consumer, matrix, s_nn, s_np, e_np, e_nn, r, g, b, a);
         addQuad(consumer, matrix, s_np, s_pp, e_pp, e_np, r, g, b, a);
         addQuad(consumer, matrix, s_pn, s_nn, e_nn, e_pn, r, g, b, a);
+
+        // End caps: close the tube at both ends so it doesn't read as a hollow open-ended pipe
+        // (very visible on a short intimidation stub viewed head-on).
+        addQuad(consumer, matrix, s_pp, s_pn, s_nn, s_np, r, g, b, a); // start face
+        addQuad(consumer, matrix, e_pp, e_np, e_nn, e_pn, r, g, b, a); // end face
     }
 
     private static void addQuad(VertexConsumer consumer, Matrix4f matrix,

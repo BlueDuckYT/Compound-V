@@ -86,6 +86,8 @@ public class CompoundVMod {
         @SubscribeEvent
         public static void registerRenderers(EntityRenderersEvent.RegisterRenderers event) {
             event.registerEntityRenderer(EntityReg.WEB_PROJECTILE.get(), ThrownItemRenderer::new);
+            event.registerEntityRenderer(EntityReg.ICE_PROJECTILE.get(),
+                    blueduck.compound_v.client.IceProjectileRenderer::new);
         }
 
         @SubscribeEvent

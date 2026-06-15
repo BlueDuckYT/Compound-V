@@ -10,12 +10,14 @@ public class LaserClientData {
         public double hitX, hitY, hitZ;
         public int colorIndex;
         public int ticksRemaining;
+        public float intensity;
 
-        public LaserInfo(double hitX, double hitY, double hitZ, int colorIndex) {
+        public LaserInfo(double hitX, double hitY, double hitZ, int colorIndex, float intensity) {
             this.hitX = hitX;
             this.hitY = hitY;
             this.hitZ = hitZ;
             this.colorIndex = colorIndex;
+            this.intensity = intensity;
             this.ticksRemaining = 2;
         }
     }
@@ -23,7 +25,11 @@ public class LaserClientData {
     private static final Map<Integer, LaserInfo> activeLasers = new ConcurrentHashMap<>();
 
     public static void setLaserActive(int entityId, double hitX, double hitY, double hitZ, int colorIndex) {
-        activeLasers.put(entityId, new LaserInfo(hitX, hitY, hitZ, colorIndex));
+        setLaserActive(entityId, hitX, hitY, hitZ, colorIndex, 1.0f);
+    }
+
+    public static void setLaserActive(int entityId, double hitX, double hitY, double hitZ, int colorIndex, float intensity) {
+        activeLasers.put(entityId, new LaserInfo(hitX, hitY, hitZ, colorIndex, intensity));
     }
 
     public static Map<Integer, LaserInfo> getActiveLasers() {

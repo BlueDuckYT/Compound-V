@@ -166,6 +166,106 @@ public class StormfrontEffect extends CompoundVEffect {
                 10, radius * 0.2, 0.4, radius * 0.2, 0.1);
     }
 
+    /** Finds the best mob in the player's general view direction within aim range. */
+    private LivingEntity acquireChainTarget(ServerPlayer player, ServerLevel level) {
+        double range = Config.stormfrontChainAimRange;
+        Vec3 eye = player.getEyePosition(1.0f);
+        Vec3 look = player.getLookAngle();
+        LivingEntity best = null;
+        double bestScore = -1;
+        AABB box = player.getBoundingBox().expandTowards(look.scale(range)).inflate(4.0);
+        for (net.minecraft.world.entity.Entity e : level.getEntities(player, box,
+                ent -> ent instanceof LivingEntity && ent.isAlive() && ent != player)) {
+            Vec3 toEntity = e.position().add(0, e.getBbHeight() * 0.5, 0).subtract(eye);
+            double dist = toEntity.length();
+            if (dist > range) continue;
+            double dot = toEntity.normalize().dot(look);
+            if (dot < 0.85) continue; // must be roughly in front (cone ~32°)
+            // Prefer the most directly-looked-at, then nearest.
+            double score = dot - dist * 0.001;
+            if (score > bestScore) { bestScore = score; best = (LivingEntity) e; }
+        }
+        return best;
+    }
+
+    /** Arcs a lightning bolt through the target and nearby mobs, with per-jump falloff. */
+    private void chainLightning(ServerPlayer player, ServerLevel level, LivingEntity first) {
+        int maxJumps = Config.stormfrontChainMaxJumps;
+        double jumpRange = Config.stormfrontChainJumpRange;
+        float damage = (float) Config.stormfrontChainDamage;
+        float falloff = (float) Config.stormfrontChainFalloff;
+        net.minecraft.world.damagesource.DamageSource source = player.damageSources().lightningBolt();
+
+        java.util.Set<java.util.UUID> hit = new java.util.HashSet<>();
+        java.util.List<LivingEntity> chain = new java.util.ArrayList<>();
+        LivingEntity current = first;
+        Vec3 prevPos = player.getEyePosition(1.0f);
+
+        for (int jump = 0; jump < maxJumps && current != null; jump++) {
+            hit.add(current.getUUID());
+            chain.add(current);
+
+            float dmg = damage * (float) Math.pow(falloff, jump);
+            current.invulnerableTime = 0;
+            current.hurt(source, dmg);
+
+            // Arc visual: sparks along the segment from the previous node to this mob.
+            Vec3 cur = current.position().add(0, current.getBbHeight() * 0.5, 0);
+            drawArc(level, prevPos, cur);
+            level.sendParticles(ParticleTypes.ELECTRIC_SPARK,
+                    cur.x, cur.y, cur.z, 8, 0.2, 0.3, 0.2, 0.12);
+            prevPos = cur;
+
+            // Find the nearest un-hit mob within jump range to continue the chain.
+            LivingEntity next = null;
+            double nearest = jumpRange + 1;
+            AABB box = current.getBoundingBox().inflate(jumpRange);
+            for (net.minecraft.world.entity.Entity e : level.getEntities(current, box,
+                    ent -> ent instanceof LivingEntity && ent.isAlive() && ent != player)) {
+                if (hit.contains(e.getUUID())) continue;
+                double d = current.distanceTo(e);
+                if (d <= jumpRange && d < nearest) { nearest = d; next = (LivingEntity) e; }
+            }
+            current = next;
+        }
+
+        // Beam visuals from the player to each chained mob (reuses the beam packet).
+        if (!chain.isEmpty()) {
+            int beamCount = Math.min(chain.size(), 8);
+            double[] bx = new double[beamCount];
+            double[] by = new double[beamCount];
+            double[] bz = new double[beamCount];
+            for (int i = 0; i < beamCount; i++) {
+                LivingEntity t = chain.get(i);
+                bx[i] = t.getX();
+                by[i] = t.getY() + t.getBbHeight() * 0.5;
+                bz[i] = t.getZ();
+            }
+            blueduck.compound_v.keybinds.PacketHandler.sendToTrackingAndSelf(
+                    new blueduck.compound_v.util.S2CStormfrontBeamPacket(
+                            player.getId(), bx, by, bz, beamCount),
+                    player);
+        }
+
+        level.playSound(null, player.getX(), player.getY(), player.getZ(),
+                SoundEvents.LIGHTNING_BOLT_IMPACT, SoundSource.PLAYERS, 0.7F, 1.5F);
+        level.sendParticles(ParticleTypes.ELECTRIC_SPARK,
+                player.getX(), player.getY() + player.getBbHeight() * 0.7, player.getZ(),
+                12, 0.3, 0.2, 0.3, 0.15);
+    }
+
+    /** Spark particles strung along a segment to suggest an arc between two points. */
+    private void drawArc(ServerLevel level, Vec3 from, Vec3 to) {
+        int steps = (int) Math.max(4, from.distanceTo(to) * 2);
+        for (int i = 0; i <= steps; i++) {
+            double t = (double) i / steps;
+            double x = from.x + (to.x - from.x) * t + (level.getRandom().nextDouble() - 0.5) * 0.3;
+            double y = from.y + (to.y - from.y) * t + (level.getRandom().nextDouble() - 0.5) * 0.3;
+            double z = from.z + (to.z - from.z) * t + (level.getRandom().nextDouble() - 0.5) * 0.3;
+            level.sendParticles(ParticleTypes.ELECTRIC_SPARK, x, y, z, 1, 0.0, 0.0, 0.0, 0.0);
+        }
+    }
+
     private void summonLightning(ServerPlayer player, ServerLevel level) {
         UUID uuid = player.getUUID();
         long now = level.getGameTime();
@@ -178,6 +278,15 @@ public class StormfrontEffect extends CompoundVEffect {
                                 "§7Lightning cooldown: " + remaining + "s"),
                         true);
             }
+            return;
+        }
+
+        // Chain lightning: if there's a mob in the general view direction within range,
+        // arc a bolt through it and nearby mobs. Otherwise fall back to a summoned bolt.
+        LivingEntity chainTarget = acquireChainTarget(player, level);
+        if (chainTarget != null) {
+            chainLightning(player, level, chainTarget);
+            lightningCooldownUntil.put(uuid, now + Config.stormfrontLightningCooldown);
             return;
         }
 

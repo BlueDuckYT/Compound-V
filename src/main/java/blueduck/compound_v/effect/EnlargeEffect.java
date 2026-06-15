@@ -37,6 +37,9 @@ public class EnlargeEffect extends CompoundVEffect {
     private static final UUID ENLARGE_DAMAGE_UUID = UUID.fromString("d5e78c9a-1b3f-4a7e-9c2d-8f6b5a4e3d21");
     private static final UUID ENLARGE_BLOCK_REACH_UUID = UUID.fromString("d5e78c9a-1b3f-4a7e-9c2d-8f6b5a4e3d22");
     private static final UUID ENLARGE_ENTITY_REACH_UUID = UUID.fromString("d5e78c9a-1b3f-4a7e-9c2d-8f6b5a4e3d23");
+    private static final UUID ENLARGE_ATTACK_SPEED_UUID = UUID.fromString("d5e78c9a-1b3f-4a7e-9c2d-8f6b5a4e3d24");
+    private static final UUID ENLARGE_SLOW_UUID = UUID.fromString("d5e78c9a-1b3f-4a7e-9c2d-8f6b5a4e3d25");
+    private static final UUID ENLARGE_KBR_UUID = UUID.fromString("d5e78c9a-1b3f-4a7e-9c2d-8f6b5a4e3d26");
     public static final float ENLARGE_SCALE = 3.0f;
     public static final float ENLARGE_DAMAGE_REDUCTION = 0.6f; // take 60% damage = 40% reduction
 
@@ -116,6 +119,24 @@ public class EnlargeEffect extends CompoundVEffect {
             entityReach.addTransientModifier(new AttributeModifier(
                     ENLARGE_ENTITY_REACH_UUID, "Enlarge entity reach", 3.0, AttributeModifier.Operation.ADDITION));
         }
+        // Slower attack speed (mining-fatigue-like heavy swings): -40%
+        var atkSpeed = player.getAttribute(Attributes.ATTACK_SPEED);
+        if (atkSpeed != null && atkSpeed.getModifier(ENLARGE_ATTACK_SPEED_UUID) == null) {
+            atkSpeed.addTransientModifier(new AttributeModifier(
+                    ENLARGE_ATTACK_SPEED_UUID, "Enlarge slow swing", -0.4, AttributeModifier.Operation.MULTIPLY_TOTAL));
+        }
+        // Slower movement: -25%
+        var speed = player.getAttribute(Attributes.MOVEMENT_SPEED);
+        if (speed != null && speed.getModifier(ENLARGE_SLOW_UUID) == null) {
+            speed.addTransientModifier(new AttributeModifier(
+                    ENLARGE_SLOW_UUID, "Enlarge slow", -0.25, AttributeModifier.Operation.MULTIPLY_TOTAL));
+        }
+        // Knockback resistance: nearly immovable
+        var kbr = player.getAttribute(Attributes.KNOCKBACK_RESISTANCE);
+        if (kbr != null && kbr.getModifier(ENLARGE_KBR_UUID) == null) {
+            kbr.addTransientModifier(new AttributeModifier(
+                    ENLARGE_KBR_UUID, "Enlarge knockback resist", 0.8, AttributeModifier.Operation.ADDITION));
+        }
     }
 
     private static void removeBoosts(Player player) {
@@ -125,6 +146,12 @@ public class EnlargeEffect extends CompoundVEffect {
         if (blockReach != null) blockReach.removeModifier(ENLARGE_BLOCK_REACH_UUID);
         var entityReach = player.getAttribute(net.minecraftforge.common.ForgeMod.ENTITY_REACH.get());
         if (entityReach != null) entityReach.removeModifier(ENLARGE_ENTITY_REACH_UUID);
+        var atkSpeed = player.getAttribute(Attributes.ATTACK_SPEED);
+        if (atkSpeed != null) atkSpeed.removeModifier(ENLARGE_ATTACK_SPEED_UUID);
+        var speed = player.getAttribute(Attributes.MOVEMENT_SPEED);
+        if (speed != null) speed.removeModifier(ENLARGE_SLOW_UUID);
+        var kbr = player.getAttribute(Attributes.KNOCKBACK_RESISTANCE);
+        if (kbr != null) kbr.removeModifier(ENLARGE_KBR_UUID);
     }
 
     @Override

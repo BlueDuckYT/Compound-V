@@ -114,6 +114,12 @@ public class MobPowerManager {
     private static final double MOB_LEAP_TRIGGER_RANGE = 8.0;  // leap when farther than this
     private static final int MOB_LEAP_COOLDOWN = 100;           // 5 seconds between leaps
     private static final Map<UUID, Long> mobLeapCooldown = new ConcurrentHashMap<>();
+    private static final Map<UUID, Long> mobSpiderWebCooldown = new ConcurrentHashMap<>();
+    private static final Map<UUID, Long> mobSpiderTrapCooldown = new ConcurrentHashMap<>();
+    private static final Map<UUID, Long> mobSpiderDodgeCooldown = new ConcurrentHashMap<>();
+    // After a spider mob reels its target in, it "disconnects" and won't fire another web until
+    // the target has moved back out past the re-engage distance. true = currently disengaged.
+    private static final Map<UUID, Boolean> mobSpiderDisengaged = new ConcurrentHashMap<>();
 
     // --- Mob explosive tuning ---
     private static final double MOB_EXPLOSIVE_TRIGGER_RANGE = 5.0;
@@ -121,6 +127,14 @@ public class MobPowerManager {
     private static final int MOB_EXPLOSIVE_COOLDOWN = 400; // 20 seconds
     private static final Map<UUID, Integer> mobExplosiveTimer = new ConcurrentHashMap<>();
     private static final Map<UUID, Long> mobExplosiveCooldown = new ConcurrentHashMap<>();
+    // Pyrokinesis / Cryokinesis mob state: charge pools + fire/wave cooldowns
+    private static final Map<UUID, Integer> mobPyroCharges = new ConcurrentHashMap<>();
+    private static final Map<UUID, Integer> mobPyroRegen = new ConcurrentHashMap<>();
+    private static final Map<UUID, Long> mobPyroFireCd = new ConcurrentHashMap<>();
+    private static final Map<UUID, Long> mobPyroWaveCd = new ConcurrentHashMap<>();
+    private static final Map<UUID, Integer> mobCryoCharges = new ConcurrentHashMap<>();
+    private static final Map<UUID, Integer> mobCryoRegen = new ConcurrentHashMap<>();
+    private static final Map<UUID, Long> mobCryoFireCd = new ConcurrentHashMap<>();
     private static final double MOB_FLIGHT_HOVER_HEIGHT = 3.0;
     private static final double MOB_FLIGHT_SNIPER_HEIGHT = 8.0;
     private static final double MOB_FLIGHT_TURRET_HEIGHT = 12.0; // float high as a turret
@@ -322,28 +336,65 @@ public class MobPowerManager {
      * Works for hostile mobs, golems, wolves, and passive animals.
      * Public so the injection system can use the same pools.
      */
+    /**
+     * Adds a species-specific (thematic) weighted power, honoring the configurable species
+     * bias: skipped entirely when species bias is disabled, and its weight scaled by the
+     * global multiplier otherwise (min 1 if it rounds to 0 but bias is on and multiplier > 0).
+     */
+    private static void addSpecies(List<WeightedPower> list, WeightedPower wp) {
+        if (!Config.mobSpeciesBiasEnabled) return;
+        double m = Config.mobSpeciesBiasMultiplier;
+        if (m <= 0.0) return;
+        int scaled = (int) Math.round(wp.weight() * m);
+        if (scaled < 1) scaled = 1; // bias is on and non-zero -> keep at least a token chance
+        list.add(new WeightedPower(wp.power(), scaled, wp.minAmp(), wp.maxAmp()));
+    }
+
+    /**
+     * Adds a universal-pool entry with its configurable base weight. Skipped entirely when the
+     * configured weight is 0, so a power can be removed from the universal mob pool via config.
+     */
+    private static void addUniversal(List<WeightedPower> list, RegistryObject<MobEffect> power,
+                                     int weight, int minAmp, int maxAmp) {
+        if (weight <= 0) return;
+        list.add(new WeightedPower(power, weight, minAmp, maxAmp));
+    }
+
     public static List<WeightedPower> getEligiblePowers(LivingEntity mob) {
         List<WeightedPower> eligible = new ArrayList<>();
 
         // =============================================================
-        //  GENERAL POOL — available to ALL mobs (any entity that can be injected)
-        //  Species-specific pools below add more entries to bias the roll.
+        //  GENERAL POOL — available to ALL mobs (any entity that can be injected).
+        //  Per-power BASE weights are config-driven (mobWeight.* / Config.mobWeight*).
+        //  Species-specific pools below add bias-scaled entries on top.
         // =============================================================
-        eligible.add(new WeightedPower(EffectReg.LASER_EYES_BASIC, 2, 0, 0));
-        eligible.add(new WeightedPower(EffectReg.ENHANCED_REGEN, 3, 0, 0));
-        eligible.add(new WeightedPower(EffectReg.INVISIBILITY, 1, 0, 0));
-        eligible.add(new WeightedPower(EffectReg.PROJECTILE_IMMUNITY, 1, 0, 0));
-        eligible.add(new WeightedPower(EffectReg.SPEEDSTER, 1, 0, 2));
-        eligible.add(new WeightedPower(EffectReg.TELEPORT, 1, 0, 0));
+        addUniversal(eligible, EffectReg.LASER_EYES_BASIC, Config.mobWeightLaserBasic, 0, 0);
+        addUniversal(eligible, EffectReg.ENHANCED_REGEN, Config.mobWeightEnhancedRegen, 0, 0);
+        addUniversal(eligible, EffectReg.INVISIBILITY, Config.mobWeightInvisibility, 0, 0);
+        addUniversal(eligible, EffectReg.PROJECTILE_IMMUNITY, Config.mobWeightProjectileImmunity, 0, 0);
+        addUniversal(eligible, EffectReg.SPEEDSTER, Config.mobWeightSpeedster, 0, 2);
+        addUniversal(eligible, EffectReg.TELEPORT, Config.mobWeightTeleport, 0, 0);
         if (Config.weightCreativeFlight > 0) {
-            eligible.add(new WeightedPower(EffectReg.CREATIVE_FLIGHT, 1, 0, 0));
+            addUniversal(eligible, EffectReg.CREATIVE_FLIGHT, Config.mobWeightCreativeFlight, 0, 0);
         }
         if (ModList.get().isLoaded("pehkui")) {
-            eligible.add(new WeightedPower(EffectReg.SHRINK, 1, 0, 0));
-            eligible.add(new WeightedPower(EffectReg.ENLARGE, 1, 0, 0));
+            addUniversal(eligible, EffectReg.SHRINK, Config.mobWeightShrink, 0, 0);
+            addUniversal(eligible, EffectReg.ENLARGE, Config.mobWeightEnlarge, 0, 0);
         }
-        eligible.add(new WeightedPower(EffectReg.LEAP, 2, 0, 0));
-        eligible.add(new WeightedPower(EffectReg.HEALING, 1, 0, 0));
+        addUniversal(eligible, EffectReg.LEAP, Config.mobWeightLeap, 0, 0);
+        addUniversal(eligible, EffectReg.SPIDER, Config.mobWeightSpider, 0, 0);
+        addUniversal(eligible, EffectReg.HEALING, Config.mobWeightHealing, 0, 0);
+        addUniversal(eligible, EffectReg.LIFESTEAL, Config.mobWeightLifesteal, 0,
+                Math.max(0, (Config.lifestealLevelFractions != null ? Config.lifestealLevelFractions.length : 3) - 1));
+        // Pyrokinesis — every mob except Blazes (fire-immune, already fiery) and
+        // Snow Golems (fire would be self-destructive/thematically wrong).
+        if (!(mob instanceof Blaze) && !(mob instanceof net.minecraft.world.entity.animal.SnowGolem)) {
+            addUniversal(eligible, EffectReg.PYROKINESIS, Config.mobWeightPyrokinesis, 0, 0);
+        }
+        // Cryokinesis — every mob except nether mobs (fire-immune ⇒ nether-native).
+        if (!mob.fireImmune()) {
+            addUniversal(eligible, EffectReg.CRYOKINESIS, Config.mobWeightCryokinesis, 0, 0);
+        }
 
         // =============================================================
         //  SPECIES-SPECIFIC POOLS — add more weighted entries to bias the roll
@@ -351,50 +402,50 @@ public class MobPowerManager {
 
         // === Iron Golem (neutral defender) — favor flight, lasers, tank ===
         if (mob instanceof net.minecraft.world.entity.animal.IronGolem) {
-            eligible.add(new WeightedPower(EffectReg.LASER_EYES_BASIC, 8, 0, 0));
-            eligible.add(new WeightedPower(EffectReg.LASER_EYES_ADVANCED, 3, 0, 0));
-            eligible.add(new WeightedPower(EffectReg.CREATIVE_FLIGHT, 4, 0, 0));
-            eligible.add(new WeightedPower(EffectReg.ENHANCED_REGEN, 5, 0, 0));
-            eligible.add(new WeightedPower(EffectReg.INVINCIBLE, 2, 0, 0));
-            eligible.add(new WeightedPower(EffectReg.BERSERKER, 3, 0, 0));
-            eligible.add(new WeightedPower(EffectReg.PROJECTILE_IMMUNITY, 4, 0, 0));
-            eligible.add(new WeightedPower(EffectReg.HEALING, 3, 0, 0)); // great support golem
-            eligible.add(new WeightedPower(EffectReg.LEAP, 3, 0, 0));    // golem leap smash
+            addSpecies(eligible, new WeightedPower(EffectReg.LASER_EYES_BASIC, 8, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.LASER_EYES_ADVANCED, 3, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.CREATIVE_FLIGHT, 4, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.ENHANCED_REGEN, 5, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.INVINCIBLE, 2, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.BERSERKER, 3, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.PROJECTILE_IMMUNITY, 4, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.HEALING, 3, 0, 0)); // great support golem
+            addSpecies(eligible, new WeightedPower(EffectReg.LEAP, 3, 0, 0));    // golem leap smash
             if (Config.weightChestBlast > 0) {
-                eligible.add(new WeightedPower(EffectReg.CHEST_BLAST, 2, 0, 0));
+                addSpecies(eligible, new WeightedPower(EffectReg.CHEST_BLAST, 2, 0, 0));
             }
             if (ModList.get().isLoaded("pehkui")) {
-                eligible.add(new WeightedPower(EffectReg.ENLARGE, 4, 0, 0));
+                addSpecies(eligible, new WeightedPower(EffectReg.ENLARGE, 4, 0, 0));
             }
         }
         // === Snow Golem ===
         else if (mob instanceof net.minecraft.world.entity.animal.SnowGolem) {
-            eligible.add(new WeightedPower(EffectReg.LASER_EYES_BASIC, 6, 0, 0));
-            eligible.add(new WeightedPower(EffectReg.CREATIVE_FLIGHT, 3, 0, 0));
-            eligible.add(new WeightedPower(EffectReg.ENHANCED_REGEN, 5, 0, 0));
-            eligible.add(new WeightedPower(EffectReg.PROJECTILE_IMMUNITY, 4, 0, 0));
-            eligible.add(new WeightedPower(EffectReg.SPEEDSTER, 3, 0, 2));
+            addSpecies(eligible, new WeightedPower(EffectReg.LASER_EYES_BASIC, 6, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.CREATIVE_FLIGHT, 3, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.ENHANCED_REGEN, 5, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.PROJECTILE_IMMUNITY, 4, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.SPEEDSTER, 3, 0, 2));
         }
         // === Wolf (loyal companion) — favor offensive ===
         else if (mob instanceof net.minecraft.world.entity.animal.Wolf) {
-            eligible.add(new WeightedPower(EffectReg.LASER_EYES_BASIC, 5, 0, 0));
-            eligible.add(new WeightedPower(EffectReg.LASER_EYES_ADVANCED, 2, 0, 0));
-            eligible.add(new WeightedPower(EffectReg.CREATIVE_FLIGHT, 4, 0, 0));
-            eligible.add(new WeightedPower(EffectReg.SPEEDSTER, 6, 0, 3));
-            eligible.add(new WeightedPower(EffectReg.ENHANCED_REGEN, 4, 0, 0));
-            eligible.add(new WeightedPower(EffectReg.BERSERKER, 3, 0, 0));
-            eligible.add(new WeightedPower(EffectReg.INVINCIBLE, 1, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.LASER_EYES_BASIC, 5, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.LASER_EYES_ADVANCED, 2, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.CREATIVE_FLIGHT, 4, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.SPEEDSTER, 6, 0, 3));
+            addSpecies(eligible, new WeightedPower(EffectReg.ENHANCED_REGEN, 4, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.BERSERKER, 3, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.INVINCIBLE, 1, 0, 0));
         }
         // === Passive animals (non-hostile, non-golem, non-wolf) — bias defensive ===
         else if (mob instanceof net.minecraft.world.entity.animal.Animal
                 && !(mob instanceof net.minecraft.world.entity.monster.Enemy)) {
-            eligible.add(new WeightedPower(EffectReg.ENHANCED_REGEN, 5, 0, 0));
-            eligible.add(new WeightedPower(EffectReg.INVISIBILITY, 4, 0, 0));
-            eligible.add(new WeightedPower(EffectReg.PROJECTILE_IMMUNITY, 4, 0, 0));
-            eligible.add(new WeightedPower(EffectReg.TELEPORT, 3, 0, 0));
-            eligible.add(new WeightedPower(EffectReg.SPEEDSTER, 3, 0, 2));
+            addSpecies(eligible, new WeightedPower(EffectReg.ENHANCED_REGEN, 5, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.INVISIBILITY, 4, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.PROJECTILE_IMMUNITY, 4, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.TELEPORT, 3, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.SPEEDSTER, 3, 0, 2));
             if (ModList.get().isLoaded("pehkui")) {
-                eligible.add(new WeightedPower(EffectReg.SHRINK, 4, 0, 0));
+                addSpecies(eligible, new WeightedPower(EffectReg.SHRINK, 4, 0, 0));
             }
         }
 
@@ -404,96 +455,99 @@ public class MobPowerManager {
 
         // === Zombie family (Drowned extends Zombie — check Drowned first) ===
         if (mob instanceof Drowned) {
-            eligible.add(new WeightedPower(EffectReg.DEEP, 10, 0, 0));
-            eligible.add(new WeightedPower(EffectReg.LASER_EYES_BASIC, 2, 0, 0));
-            eligible.add(new WeightedPower(EffectReg.TELEPORT, 2, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.DEEP, 10, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.LASER_EYES_BASIC, 2, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.TELEPORT, 2, 0, 0));
         } else if (mob instanceof Zombie) {
-            eligible.add(new WeightedPower(EffectReg.LASER_EYES_BASIC, 6, 0, 0));
-            eligible.add(new WeightedPower(EffectReg.LASER_EYES_ADVANCED, 1, 0, 0)); // rare Homelander zombie
-            eligible.add(new WeightedPower(EffectReg.TELEPORT, 4, 0, 0));
-            eligible.add(new WeightedPower(EffectReg.ENHANCED_REGEN, 3, 0, 0));
-            eligible.add(new WeightedPower(EffectReg.SPEEDSTER, 3, 0, 3));  // levels 1-4
-            eligible.add(new WeightedPower(EffectReg.BERSERKER, 4, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.LASER_EYES_BASIC, 6, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.LASER_EYES_ADVANCED, 1, 0, 0)); // rare Homelander zombie
+            addSpecies(eligible, new WeightedPower(EffectReg.TELEPORT, 4, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.ENHANCED_REGEN, 3, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.SPEEDSTER, 3, 0, 3));  // levels 1-4
+            addSpecies(eligible, new WeightedPower(EffectReg.BERSERKER, 4, 0, 0));
         }
 
         // === Skeleton family (Skeleton, Stray, WitherSkeleton) ===
         if (mob instanceof AbstractSkeleton) {
-            eligible.add(new WeightedPower(EffectReg.ATOM_CHARGING, 8, 0, 2));  // levels 1-3
-            eligible.add(new WeightedPower(EffectReg.TELEPORT, 4, 0, 0));
-            eligible.add(new WeightedPower(EffectReg.PROJECTILE_IMMUNITY, 2, 0, 0)); // ironic — arrows bounce off them
+            addSpecies(eligible, new WeightedPower(EffectReg.ATOM_CHARGING, 8, 0, 2));  // levels 1-3
+            addSpecies(eligible, new WeightedPower(EffectReg.TELEPORT, 4, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.PROJECTILE_IMMUNITY, 2, 0, 0)); // ironic — arrows bounce off them
             if (mob instanceof WitherSkeleton) {
 
-                eligible.add(new WeightedPower(EffectReg.LASER_EYES_BASIC, 1, 0, 0));
-                eligible.add(new WeightedPower(EffectReg.BERSERKER, 3, 0, 0));
+                addSpecies(eligible, new WeightedPower(EffectReg.LASER_EYES_BASIC, 1, 0, 0));
+                addSpecies(eligible, new WeightedPower(EffectReg.BERSERKER, 3, 0, 0));
             }
         }
 
         // === Illager family (Pillager, Vindicator, Evoker, etc.) ===
         if (mob instanceof AbstractIllager) {
-            eligible.add(new WeightedPower(EffectReg.ATOM_CHARGING, 8, 0, 2));  // levels 1-3
-            eligible.add(new WeightedPower(EffectReg.SPEEDSTER, 3, 0, 3));      // levels 1-4
-            eligible.add(new WeightedPower(EffectReg.BERSERKER, 4, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.ATOM_CHARGING, 8, 0, 2));  // levels 1-3
+            addSpecies(eligible, new WeightedPower(EffectReg.SPEEDSTER, 3, 0, 3));      // levels 1-4
+            addSpecies(eligible, new WeightedPower(EffectReg.BERSERKER, 4, 0, 0));
         }
 
         // === Enderman ===
         if (mob instanceof EnderMan) {
-            eligible.add(new WeightedPower(EffectReg.LASER_EYES_BASIC, 8, 0, 0));
-            eligible.add(new WeightedPower(EffectReg.LASER_EYES_ADVANCED, 2, 0, 0)); // rare — purple Homelander enderman
-            eligible.add(new WeightedPower(EffectReg.SPEEDSTER, 4, 0, 3));
+            addSpecies(eligible, new WeightedPower(EffectReg.LASER_EYES_BASIC, 8, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.LASER_EYES_ADVANCED, 2, 0, 0)); // rare — purple Homelander enderman
+            addSpecies(eligible, new WeightedPower(EffectReg.SPEEDSTER, 4, 0, 3));
         }
 
         // === Spider family (Spider, CaveSpider) ===
         if (mob instanceof Spider) {
-            eligible.add(new WeightedPower(EffectReg.SPEEDSTER, 8, 0, 4));      // levels 1-5
-            eligible.add(new WeightedPower(EffectReg.INVISIBILITY, 3, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.SPEEDSTER, 8, 0, 4));      // levels 1-5
+            addSpecies(eligible, new WeightedPower(EffectReg.INVISIBILITY, 3, 0, 0));
+            if (Config.mobWeightSpider > 0) {
+                addSpecies(eligible, new WeightedPower(EffectReg.SPIDER, 12, 0, 0));   // thematic: spiders love this
+            }
         }
 
         // === Phantom ===
         if (mob instanceof Phantom) {
-            eligible.add(new WeightedPower(EffectReg.SPEEDSTER, 10, 1, 4));     // levels 2-5
+            addSpecies(eligible, new WeightedPower(EffectReg.SPEEDSTER, 10, 1, 4));     // levels 2-5
         }
 
         // === Witch ===
         if (mob instanceof Witch) {
-            eligible.add(new WeightedPower(EffectReg.INVISIBILITY, 8, 0, 0));
-            eligible.add(new WeightedPower(EffectReg.TELEPORT, 3, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.INVISIBILITY, 8, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.TELEPORT, 3, 0, 0));
         }
 
         // === Blaze ===
         if (mob instanceof Blaze) {
-            eligible.add(new WeightedPower(EffectReg.LASER_EYES_BASIC, 10, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.LASER_EYES_BASIC, 10, 0, 0));
         }
 
         // === Guardian family (Guardian, ElderGuardian) ===
         if (mob instanceof Guardian) {
-            eligible.add(new WeightedPower(EffectReg.DEEP, 10, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.DEEP, 10, 0, 0));
         }
 
         // === Piglin family (Piglin, PiglinBrute) ===
         if (mob instanceof AbstractPiglin) {
-            eligible.add(new WeightedPower(EffectReg.SPEEDSTER, 5, 0, 3));      // levels 1-4
-            eligible.add(new WeightedPower(EffectReg.ATOM_CHARGING, 5, 0, 2));  // levels 1-3
-            eligible.add(new WeightedPower(EffectReg.BERSERKER, 4, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.SPEEDSTER, 5, 0, 3));      // levels 1-4
+            addSpecies(eligible, new WeightedPower(EffectReg.ATOM_CHARGING, 5, 0, 2));  // levels 1-3
+            addSpecies(eligible, new WeightedPower(EffectReg.BERSERKER, 4, 0, 0));
         }
 
         // === Additional hostile-only options (on top of general pool) ===
         if (mob instanceof net.minecraft.world.entity.monster.Enemy) {
-            eligible.add(new WeightedPower(EffectReg.ENHANCED_REGEN, 3, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.ENHANCED_REGEN, 3, 0, 0));
             if (Config.weightInvincible > 0) {
-                eligible.add(new WeightedPower(EffectReg.INVINCIBLE, 1, 0, 0));
+                addSpecies(eligible, new WeightedPower(EffectReg.INVINCIBLE, 1, 0, 0));
             }
-            eligible.add(new WeightedPower(EffectReg.BERSERKER, 3, 0, 0));
-            eligible.add(new WeightedPower(EffectReg.LASER_EYES_ADVANCED, 1, 0, 0));
-            eligible.add(new WeightedPower(EffectReg.MAGNETISM, 1, 0, 0));
-            eligible.add(new WeightedPower(EffectReg.CREATIVE_FLIGHT, 2, 0, 0)); // +2 on top of general pool's 1
-            eligible.add(new WeightedPower(EffectReg.LEAP, 3, 0, 0));            // common hostile leap
-            eligible.add(new WeightedPower(EffectReg.EXPLOSIVE, 1, 0, 0));        // rare — mob survives its own blast
+            addSpecies(eligible, new WeightedPower(EffectReg.BERSERKER, 3, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.LASER_EYES_ADVANCED, 1, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.MAGNETISM, 1, 0, 0));
+            addSpecies(eligible, new WeightedPower(EffectReg.CREATIVE_FLIGHT, 2, 0, 0)); // +2 on top of general pool's 1
+            addSpecies(eligible, new WeightedPower(EffectReg.LEAP, 3, 0, 0));            // common hostile leap
+            addSpecies(eligible, new WeightedPower(EffectReg.EXPLOSIVE, 1, 0, 0));        // rare — mob survives its own blast
             if (Config.weightChestBlast > 0) {
-                eligible.add(new WeightedPower(EffectReg.CHEST_BLAST, Config.mobChestBlastWeight, 0, 0));
+                addSpecies(eligible, new WeightedPower(EffectReg.CHEST_BLAST, Config.mobChestBlastWeight, 0, 0));
             }
             if (ModList.get().isLoaded("pehkui")) {
-                eligible.add(new WeightedPower(EffectReg.SHRINK, 2, 0, 0));
-                eligible.add(new WeightedPower(EffectReg.ENLARGE, 2, 0, 0));
+                addSpecies(eligible, new WeightedPower(EffectReg.SHRINK, 2, 0, 0));
+                addSpecies(eligible, new WeightedPower(EffectReg.ENLARGE, 2, 0, 0));
             }
         }
 
@@ -525,6 +579,10 @@ public class MobPowerManager {
             if (wp.power() == EffectReg.LEAP && !Config.mobPowerLeap) return true;
             if (wp.power() == EffectReg.EXPLOSIVE && !Config.mobPowerExplosive) return true;
             if (wp.power() == EffectReg.HEALING && !Config.mobPowerHealing) return true;
+            if (wp.power() == EffectReg.FORCEFIELD && !Config.mobPowerForcefield) return true;
+            if (wp.power() == EffectReg.PYROKINESIS && !Config.mobPowerPyrokinesis) return true;
+            if (wp.power() == EffectReg.CRYOKINESIS && !Config.mobPowerCryokinesis) return true;
+            if (wp.power() == EffectReg.LIFESTEAL && !Config.mobPowerLifesteal) return true;
             return false;
         });
         return eligible;
@@ -539,8 +597,18 @@ public class MobPowerManager {
      * Handles blue sparkle particles and active power AI.
      */
     public static void onMobTick(Mob mob, ServerLevel level) {
-        // Quick bail: only process powered mobs
-        if (!mob.getPersistentData().getBoolean(POWERED_TAG)) return;
+        // Quick bail: only process powered mobs. A mob is "powered" if it carries the
+        // tag from natural injection, OR if it simply has any CompoundV effect applied
+        // some other way (e.g. via the /effect command) — in that case, lazily mark it
+        // powered and do the one-time setup so command-applied powers are functional
+        // and show the blue particles just like injected ones.
+        if (!mob.getPersistentData().getBoolean(POWERED_TAG)) {
+            if (mob.isAlive() && !mob.getActiveEffects().isEmpty() && hasAnyCompoundVEffect(mob)) {
+                initCommandPoweredMob(mob);
+            } else {
+                return;
+            }
+        }
         if (!mob.isAlive()) {
             // Reset Pehkui scale if this mob had shrink/enlarge
             if (ModList.get().isLoaded("pehkui")
@@ -655,6 +723,22 @@ public class MobPowerManager {
         // Explosive: charge and detonate near target
         if (mob.hasEffect(EffectReg.EXPLOSIVE.get())) {
             tickMobExplosive(mob, target, level);
+        }
+
+        // Pyrokinesis: throw fireballs at target; flame wave when target gets close
+        if (mob.hasEffect(EffectReg.PYROKINESIS.get())) {
+            tickMobPyrokinesis(mob, target, level);
+        }
+
+        // Cryokinesis: throw ice balls at target; frost aura while a target is near
+        if (mob.hasEffect(EffectReg.CRYOKINESIS.get())) {
+            tickMobCryokinesis(mob, target, level);
+        }
+
+        // Spider: web-yank prey toward itself, lunge across gaps, sidestep projectiles.
+        if (mob.hasEffect(EffectReg.SPIDER.get())) {
+            mob.fallDistance = 0; // spider mobs don't take fall damage (web-slinging)
+            tickMobSpider(mob, target, level);
         }
     }
 
@@ -1627,6 +1711,133 @@ public class MobPowerManager {
         mobLeapCooldown.put(mob.getUUID(), now + MOB_LEAP_COOLDOWN);
     }
 
+    /**
+     * Spider mob behavior — a predatory web-slinger:
+     *  - Web-yank: at mid range, fires a webbing strand that DRAGS the target toward the mob
+     *    (the opposite of the player's reel) and roots it briefly with slowness — catching prey.
+     *  - Lunge: across larger gaps it springs toward the target (no fall damage), traversing
+     *    terrain a normal mob couldn't.
+     *  - Sidestep: when a projectile is incoming, it darts sideways (spider-sense reflex).
+     * All thematic, reuses existing patterns, and is purely server-side velocity/effects.
+     */
+    private static void tickMobSpider(Mob mob, LivingEntity target, ServerLevel level) {
+        if (target == null || !target.isAlive()) return;
+        long now = level.getGameTime();
+        UUID id = mob.getUUID();
+        double dist = mob.distanceTo(target);
+
+        // --- Sidestep reflex (spider-sense): dodge an incoming projectile aimed at the mob ---
+        if (now >= mobSpiderDodgeCooldown.getOrDefault(id, 0L)) {
+            Vec3 mpos = mob.position().add(0, mob.getBbHeight() * 0.5, 0);
+            for (var proj : level.getEntitiesOfClass(net.minecraft.world.entity.projectile.Projectile.class,
+                    mob.getBoundingBox().inflate(10.0))) {
+                Vec3 v = proj.getDeltaMovement();
+                if (v.lengthSqr() < 1.0e-4) continue;
+                Vec3 toMob = mpos.subtract(proj.position());
+                if (toMob.length() < 0.1) continue;
+                if (v.normalize().dot(toMob.normalize()) > 0.92) {
+                    Vec3 side = new Vec3(-v.z, 0, v.x).normalize().scale(0.9);
+                    mob.setDeltaMovement(side.x, 0.35, side.z);
+                    mob.hurtMarked = true;
+                    level.sendParticles(ParticleTypes.CRIT, mob.getX(), mob.getY() + 1.0, mob.getZ(),
+                            6, 0.3, 0.3, 0.3, 0.1);
+                    mobSpiderDodgeCooldown.put(id, now + 30);
+                    break;
+                }
+            }
+        }
+
+        if (!mob.hasLineOfSight(target)) return;
+
+        // Re-engage gating: after the mob reels the target in, it disconnects and won't fire a
+        // new web until the target moves back out past the re-engage distance. This stops the
+        // mob from yank-spamming a target that's already pulled in close.
+        boolean disengaged = mobSpiderDisengaged.getOrDefault(id, false);
+        double reengageDist = 11.0;
+        if (disengaged) {
+            if (dist >= reengageDist) {
+                mobSpiderDisengaged.put(id, false); // target got away — allowed to web again
+            }
+            // While disengaged, don't web-shot; fall through to melee/trap behavior.
+        }
+
+        // --- Web-shot: fire a web projectile that the target can DODGE. The yank + root only
+        // land if the projectile actually hits (handled in WebProjectileEntity#onHitEntity),
+        // so there's travel time and the attack is reactable — not an instant grab.
+        if (!disengaged && dist > 4.5 && dist < 28.0 && now >= mobSpiderWebCooldown.getOrDefault(id, 0L)) {
+            blueduck.compound_v.entity.WebProjectileEntity web =
+                    new blueduck.compound_v.entity.WebProjectileEntity(level, mob);
+            // Lead the target slightly so it's hittable but still dodgeable by moving.
+            Vec3 aimPoint = target.position().add(0, target.getBbHeight() * 0.5, 0)
+                    .add(target.getDeltaMovement().scale(2.0));
+            Vec3 aim = aimPoint.subtract(mob.getEyePosition());
+            // Faster than the sluggish 1.4 but still slower than the player's web, with a bit of
+            // inaccuracy so it has visible travel time and can be sidestepped.
+            web.shoot(aim.x, aim.y, aim.z, 2.2F, 3.0F);
+            web.setMobYankShot(true); // marks it to yank+root the target it strikes
+            level.addFreshEntity(web);
+            // Telegraph: a wind-up sound so the player gets a beat of warning before it flies.
+            level.playSound(null, mob.getX(), mob.getY(), mob.getZ(),
+                    SoundEvents.SPIDER_AMBIENT, SoundSource.HOSTILE, 1.0F, 0.7F);
+            level.playSound(null, mob.getX(), mob.getY(), mob.getZ(),
+                    SoundEvents.SLIME_BLOCK_PLACE, SoundSource.HOSTILE, 0.7F, 1.0F);
+            mobSpiderWebCooldown.put(id, now + 70);
+            // After yanking the target in, disconnect until they retreat past reengageDist.
+            mobSpiderDisengaged.put(id, true);
+            return;
+        }
+
+        // --- Web-trap: a RARER ensnare. Places temporary cobweb around the target. The mob is
+        // cobweb-immune so it traps the target, not itself; cobwebs replace only air and clear
+        // themselves. Gated by a long cooldown plus a random chance so it's an occasional
+        // surprise, not a constant lockdown.
+        if (dist < 6.0 && now >= mobSpiderTrapCooldown.getOrDefault(id, 0L)
+                && mob.getRandom().nextFloat() < 0.12f) {
+            net.minecraft.core.BlockPos center = target.blockPosition();
+            int placed = 0;
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dy = 0; dy <= 1; dy++) {
+                    for (int dz = -1; dz <= 1; dz++) {
+                        net.minecraft.core.BlockPos p = center.offset(dx, dy, dz);
+                        if (level.getBlockState(p).isAir()) {
+                            level.setBlockAndUpdate(p, net.minecraft.world.level.block.Blocks.COBWEB.defaultBlockState());
+                            scheduleWebClear(level, p, now + 120); // clear after ~6s
+                            placed++;
+                        }
+                    }
+                }
+            }
+            if (placed > 0) {
+                level.sendParticles(ParticleTypes.ITEM_SLIME,
+                        target.getX(), target.getY() + 0.5, target.getZ(), 12, 0.5, 0.5, 0.5, 0.0);
+                level.playSound(null, target.getX(), target.getY(), target.getZ(),
+                        SoundEvents.SLIME_BLOCK_PLACE, SoundSource.HOSTILE, 0.9F, 0.7F);
+            }
+            mobSpiderTrapCooldown.put(id, now + 500); // ~25s between trap attempts
+        }
+    }
+
+    // Scheduled cobweb cleanups: pos -> game-time at which to remove it (if still cobweb).
+    private static final Map<net.minecraft.core.BlockPos, Long> webClearQueue = new ConcurrentHashMap<>();
+
+    private static void scheduleWebClear(ServerLevel level, net.minecraft.core.BlockPos pos, long whenTick) {
+        webClearQueue.put(pos.immutable(), whenTick);
+    }
+
+    /** Called each server tick (from the mob power tick) to remove expired trap cobwebs. */
+    public static void tickWebClears(ServerLevel level) {
+        if (webClearQueue.isEmpty()) return;
+        long now = level.getGameTime();
+        webClearQueue.entrySet().removeIf(e -> {
+            if (now < e.getValue()) return false;
+            net.minecraft.core.BlockPos p = e.getKey();
+            if (level.getBlockState(p).is(net.minecraft.world.level.block.Blocks.COBWEB)) {
+                level.setBlockAndUpdate(p, net.minecraft.world.level.block.Blocks.AIR.defaultBlockState());
+            }
+            return true;
+        });
+    }
+
     // =====================================================================
     //  MOB EXPLOSIVE
     // =====================================================================
@@ -1691,6 +1902,186 @@ public class MobPowerManager {
     }
 
     // =====================================================================
+    //  PYROKINESIS / CRYOKINESIS (mob AI)
+    // =====================================================================
+
+    /** True if the mob has any CompoundV effect (used to detect command-applied powers). */
+    private static boolean hasAnyCompoundVEffect(Mob mob) {
+        for (MobEffectInstance inst : mob.getActiveEffects()) {
+            if (inst.getEffect() instanceof CompoundVEffect) return true;
+        }
+        return false;
+    }
+
+    /**
+     * One-time setup for a mob that received a CompoundV effect outside the normal
+     * injection flow (e.g. via /effect). Marks it powered and rolls a laser color if
+     * needed, so its AI runs, it shows blue particles, and lasers render correctly.
+     */
+    private static void initCommandPoweredMob(Mob mob) {
+        mob.getPersistentData().putBoolean(POWERED_TAG, true);
+        if (!mob.getPersistentData().contains(LASER_COLOR_TAG)) {
+            if (mob.hasEffect(EffectReg.LASER_EYES_ADVANCED.get())) {
+                mob.getPersistentData().putInt(LASER_COLOR_TAG,
+                        mob instanceof EnderMan ? S2CLaserSyncPacket.COLOR_PURPLE : S2CLaserSyncPacket.COLOR_RED);
+            } else if (mob.hasEffect(EffectReg.LASER_EYES_BASIC.get())) {
+                mob.getPersistentData().putInt(LASER_COLOR_TAG, rollLaserColor(mob));
+            }
+        }
+        // Shrink mobs should start small like injected ones.
+        if (mob.hasEffect(EffectReg.SHRINK.get()) && ModList.get().isLoaded("pehkui")) {
+            PehkuiHelper.setScale(mob, MOB_SHRINK_SCALE);
+        }
+    }
+
+    /** Regenerates a mob charge pool; returns the (possibly updated) charge count. */
+    private static int regenMobCharges(UUID uuid, Map<UUID, Integer> charges, Map<UUID, Integer> regen, int max) {
+        int c = charges.getOrDefault(uuid, max);
+        if (c < max) {
+            int r = regen.getOrDefault(uuid, 0) + 1;
+            if (r >= Config.mobChargeRegenTicks) {
+                r = 0;
+                c = Math.min(max, c + 1);
+            }
+            regen.put(uuid, r);
+        }
+        charges.put(uuid, c);
+        return c;
+    }
+
+    private static void tickMobPyrokinesis(Mob mob, LivingEntity target, ServerLevel level) {
+        UUID uuid = mob.getUUID();
+        long now = level.getGameTime();
+        int charges = regenMobCharges(uuid, mobPyroCharges, mobPyroRegen, Config.mobPyroMaxCharges);
+
+        if (target == null || !target.isAlive()) return;
+        double dist = mob.distanceTo(target);
+
+        // Flame wave when the target is close (reactive AoE).
+        if (dist <= Config.pyroFlameWaveRadius && now >= mobPyroWaveCd.getOrDefault(uuid, 0L)) {
+            mobPyroWaveCd.put(uuid, now + Config.pyroFlameWaveCooldown);
+            mobFlameWave(mob, level);
+            return;
+        }
+
+        // Throw a fireball at the target if in range, with line of sight, and a charge is ready.
+        if (charges > 0 && dist <= Config.mobProjectileRange
+                && now >= mobPyroFireCd.getOrDefault(uuid, 0L)
+                && mob.hasLineOfSight(target)) {
+            mobPyroCharges.put(uuid, charges - 1);
+            mobPyroFireCd.put(uuid, now + Config.mobPyroFireCooldown);
+
+            Vec3 from = new Vec3(mob.getX(), mob.getEyeY() - 0.1, mob.getZ());
+            Vec3 aim = target.position().add(0, target.getBbHeight() * 0.5, 0).subtract(from).normalize();
+            double speed = Config.pyroMinSpeed;
+            net.minecraft.world.entity.projectile.SmallFireball fb =
+                    new net.minecraft.world.entity.projectile.SmallFireball(level, mob,
+                            aim.x * speed, aim.y * speed, aim.z * speed);
+            fb.setPos(from.x + aim.x, from.y, from.z + aim.z);
+            level.addFreshEntity(fb);
+
+            level.playSound(null, mob.getX(), mob.getY(), mob.getZ(),
+                    SoundEvents.BLAZE_SHOOT, SoundSource.HOSTILE, 1.0F, 0.9F);
+        }
+    }
+
+    private static void tickMobCryokinesis(Mob mob, LivingEntity target, ServerLevel level) {
+        UUID uuid = mob.getUUID();
+        long now = level.getGameTime();
+        int charges = regenMobCharges(uuid, mobCryoCharges, mobCryoRegen, Config.mobCryoMaxCharges);
+
+        // Frost aura is active whenever the mob has a living target nearby (no toggle for mobs).
+        if (target != null && target.isAlive() && mob.distanceTo(target) <= Config.cryoAuraRadius + 4) {
+            mobFrostAura(mob, level);
+        }
+
+        if (target == null || !target.isAlive()) return;
+        double dist = mob.distanceTo(target);
+
+        // Throw a bouncing ice ball at the target.
+        if (charges > 0 && dist <= Config.mobProjectileRange
+                && now >= mobCryoFireCd.getOrDefault(uuid, 0L)
+                && mob.hasLineOfSight(target)) {
+            mobCryoCharges.put(uuid, charges - 1);
+            mobCryoFireCd.put(uuid, now + Config.mobCryoFireCooldown);
+
+            Vec3 from = new Vec3(mob.getX(), mob.getEyeY() - 0.1, mob.getZ());
+            Vec3 aim = target.position().add(0, target.getBbHeight() * 0.5, 0).subtract(from).normalize();
+            blueduck.compound_v.entity.IceProjectileEntity ball =
+                    new blueduck.compound_v.entity.IceProjectileEntity(level, mob);
+            ball.setPos(from.x + aim.x, from.y, from.z + aim.z);
+            ball.shoot(aim.x, aim.y, aim.z, (float) Config.cryoBallSpeed, 1.0F);
+            level.addFreshEntity(ball);
+
+            level.playSound(null, mob.getX(), mob.getY(), mob.getZ(),
+                    SoundEvents.SNOWBALL_THROW, SoundSource.HOSTILE, 1.0F, 0.8F);
+        }
+    }
+
+    /** Mob flame wave — radial ignite + damage. Honors the friendly-fire config. */
+    private static void mobFlameWave(Mob mob, ServerLevel level) {
+        double radius = Config.pyroFlameWaveRadius;
+        float peak = (float) Config.pyroFlameWaveDamage;
+        int fireSeconds = Config.pyroFlameWaveFireSeconds;
+
+        int ringPoints = 28;
+        for (int i = 0; i < ringPoints; i++) {
+            double ang = (2 * Math.PI * i) / ringPoints;
+            double rr = radius * (0.5 + level.getRandom().nextDouble() * 0.5);
+            level.sendParticles(ParticleTypes.FLAME,
+                    mob.getX() + Math.cos(ang) * rr, mob.getY() + 0.3, mob.getZ() + Math.sin(ang) * rr,
+                    1, 0.05, 0.15, 0.05, 0.02);
+        }
+        level.playSound(null, mob.getX(), mob.getY(), mob.getZ(),
+                SoundEvents.FIRECHARGE_USE, SoundSource.HOSTILE, 2.0F, 0.6F);
+
+        AABB box = mob.getBoundingBox().inflate(radius);
+        for (net.minecraft.world.entity.Entity e : level.getEntities(mob, box,
+                ent -> ent instanceof LivingEntity && ent.isAlive() && ent != mob)) {
+            LivingEntity victim = (LivingEntity) e;
+            if (!canHarm(mob, victim)) continue;
+            if (mob.distanceTo(victim) > radius) continue;
+            float falloff = (float) (1.0 - mob.distanceTo(victim) / (radius + 0.5));
+            victim.setSecondsOnFire(fireSeconds);
+            if (peak > 0) victim.hurt(mob.damageSources().mobAttack(mob), peak * falloff);
+            Vec3 push = victim.position().subtract(mob.position()).normalize();
+            victim.setDeltaMovement(victim.getDeltaMovement().add(push.x * 0.6 * falloff, 0.3 * falloff, push.z * 0.6 * falloff));
+            victim.hurtMarked = true;
+        }
+    }
+
+    /** Mob frost aura — slow + freeze nearby. Honors the friendly-fire config. */
+    private static void mobFrostAura(Mob mob, ServerLevel level) {
+        double radius = Config.cryoAuraRadius;
+        AABB box = mob.getBoundingBox().inflate(radius);
+        for (net.minecraft.world.entity.Entity e : level.getEntities(mob, box,
+                ent -> ent instanceof LivingEntity && ent.isAlive() && ent != mob)) {
+            LivingEntity victim = (LivingEntity) e;
+            if (!canHarm(mob, victim)) continue;
+            if (mob.distanceTo(victim) > radius) continue;
+            victim.addEffect(new MobEffectInstance(net.minecraft.world.effect.MobEffects.MOVEMENT_SLOWDOWN,
+                    20, Config.cryoAuraSlownessAmplifier, false, false, true));
+            victim.setTicksFrozen(Math.min(victim.getTicksRequiredToFreeze() + 20, victim.getTicksFrozen() + 8));
+        }
+        if (mob.tickCount % 4 == 0) {
+            level.sendParticles(ParticleTypes.SNOWFLAKE,
+                    mob.getX(), mob.getY() + 1.0, mob.getZ(), 3, radius * 0.4, 0.5, radius * 0.4, 0.01);
+        }
+    }
+
+    /**
+     * Friendly-fire gate for mob AoE. A mob may always harm its own target and any
+     * player; other mobs are spared unless friendly fire is enabled. (Projectiles
+     * still physically collide with whatever is in their path regardless of this.)
+     */
+    private static boolean canHarm(Mob mob, LivingEntity victim) {
+        if (Config.mobPowerFriendlyFire) return true;
+        if (victim instanceof Player) return true;
+        if (victim == mob.getTarget()) return true;
+        return false;
+    }
+
+    // =====================================================================
     //  CLEANUP
     // =====================================================================
 
@@ -1702,5 +2093,13 @@ public class MobPowerManager {
         mobLeapCooldown.remove(uuid);
         mobExplosiveTimer.remove(uuid);
         mobExplosiveCooldown.remove(uuid);
+        mobPyroCharges.remove(uuid);
+        mobPyroRegen.remove(uuid);
+        mobPyroFireCd.remove(uuid);
+        mobPyroWaveCd.remove(uuid);
+        mobCryoCharges.remove(uuid);
+        mobCryoRegen.remove(uuid);
+        mobCryoFireCd.remove(uuid);
+        blueduck.compound_v.effect.ForcefieldEffect.clear(uuid);
     }
 }

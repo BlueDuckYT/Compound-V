@@ -2,6 +2,7 @@ package blueduck.compound_v.item;
 
 import blueduck.compound_v.Config;
 import blueduck.compound_v.effect.CompoundVEffect;
+import blueduck.compound_v.effect.MimicEffect;
 import blueduck.compound_v.registry.CompoundVEffectMatrix;
 import blueduck.compound_v.util.CompoundVEffectGiver;
 import net.minecraft.sounds.SoundEvent;
@@ -49,6 +50,9 @@ public class CompoundVItem extends Item {
             } else if (!permanent && hasTempCompV(p_41350_)) {
                 // Another Temp V while already on Temp V → refresh duration
                 refreshTempDuration(p_41350_);
+            } else if (permanent && Config.levelUpOnDrink && hasPermanentCompV(p_41350_)) {
+                // Permanent V while already permanently powered → level up current effect(s) by 1
+                levelUpCurrentEffects(p_41350_);
             } else if (!hasCompVAlready(p_41350_)) {
                 boolean isBad = permanent
                         ? p_41349_.getRandom().nextDouble() < Config.badOutcomeChance
@@ -73,12 +77,37 @@ public class CompoundVItem extends Item {
     }
 
     /**
+     * A Mimic-copied power is a non-Mimic CompoundVEffect present on an entity that
+     * also has the Mimic effect. Because Mimic is exclusive when injected (it clears
+     * all other rolled powers), the only way a Mimic holder has another CompoundV
+     * effect is that it was copied — and copies must stay temporary. Drinking
+     * Compound V or Temp V must NOT make a copied power permanent or extend it.
+     */
+    private boolean isMimickedCopy(LivingEntity entity, MobEffectInstance inst) {
+        if (inst.getEffect() instanceof MimicEffect) return false;
+        return entity.hasEffect(blueduck.compound_v.registry.EffectReg.MIMIC.get());
+    }
+
+    /**
      * Checks if the entity has any temp (non-infinite) CompoundVEffect (including bad outcomes).
      */
     private boolean hasTempCompV(LivingEntity entity) {
         for (MobEffectInstance inst : entity.getActiveEffects()) {
             if (inst.getEffect() instanceof CompoundVEffect
-                    && !inst.isInfiniteDuration()) {
+                    && !inst.isInfiniteDuration()
+                    && !isMimickedCopy(entity, inst)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** True if the entity has at least one permanent (infinite) CompoundV effect (excluding copies). */
+    private boolean hasPermanentCompV(LivingEntity entity) {
+        for (MobEffectInstance inst : entity.getActiveEffects()) {
+            if (inst.getEffect() instanceof CompoundVEffect
+                    && inst.isInfiniteDuration()
+                    && !isMimickedCopy(entity, inst)) {
                 return true;
             }
         }
@@ -86,14 +115,45 @@ public class CompoundVItem extends Item {
     }
 
     /**
+     * Raises the amplifier of each permanent CompoundV effect by 1, capped at the
+     * effect's max level. Mimic copies are skipped. Effects not present in any matrix
+     * (max level unknown, returns -1) are left unchanged so SPECIAL-tier / unlisted
+     * powers can never be pushed to an invalid level or crash.
+     */
+    private void levelUpCurrentEffects(LivingEntity entity) {
+        java.util.List<MobEffectInstance> toLevel = new java.util.ArrayList<>();
+        for (MobEffectInstance inst : entity.getActiveEffects()) {
+            if (inst.getEffect() instanceof CompoundVEffect
+                    && inst.isInfiniteDuration()
+                    && !isMimickedCopy(entity, inst)) {
+                toLevel.add(inst);
+            }
+        }
+        for (MobEffectInstance old : toLevel) {
+            int maxLevel = CompoundVEffectMatrix.getMaxLevel(old.getEffect());
+            int current = old.getAmplifier();
+            // Unknown max (-1) or already at/over max → leave as-is (no crash, no over-level).
+            int target = (maxLevel >= 0) ? Math.min(current + 1, maxLevel) : current;
+            if (target == current) continue;
+            entity.removeEffect(old.getEffect());
+            MobEffectInstance leveled = new MobEffectInstance(old.getEffect(),
+                    MobEffectInstance.INFINITE_DURATION, target, false, false, false);
+            leveled.setCurativeItems(new java.util.ArrayList<>());
+            entity.addEffect(leveled);
+        }
+    }
+
+    /**
      * Upgrades all temp CompoundV effects to permanent (infinite duration),
      * keeping the same effect and amplifier. Includes bad effects.
+     * Mimic-copied powers are intentionally excluded so they cannot be made permanent.
      */
     private void upgradeTempToPermanent(LivingEntity entity) {
         java.util.List<MobEffectInstance> toUpgrade = new java.util.ArrayList<>();
         for (MobEffectInstance inst : entity.getActiveEffects()) {
             if (inst.getEffect() instanceof CompoundVEffect
-                    && !inst.isInfiniteDuration()) {
+                    && !inst.isInfiniteDuration()
+                    && !isMimickedCopy(entity, inst)) {
                 toUpgrade.add(inst);
             }
         }
@@ -109,12 +169,14 @@ public class CompoundVItem extends Item {
     /**
      * Refreshes all temp CompoundV effects back to full duration.
      * Same effect, same amplifier, just resets the timer.
+     * Mimic-copied powers are intentionally excluded so their duration cannot be extended.
      */
     private void refreshTempDuration(LivingEntity entity) {
         java.util.List<MobEffectInstance> toRefresh = new java.util.ArrayList<>();
         for (MobEffectInstance inst : entity.getActiveEffects()) {
             if (inst.getEffect() instanceof CompoundVEffect
-                    && !inst.isInfiniteDuration()) {
+                    && !inst.isInfiniteDuration()
+                    && !isMimickedCopy(entity, inst)) {
                 toRefresh.add(inst);
             }
         }

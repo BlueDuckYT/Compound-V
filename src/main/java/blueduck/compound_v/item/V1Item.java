@@ -74,11 +74,17 @@ public class V1Item extends Item {
      * and make them permanent. Looks up max level from all effect matrices.
      */
     private void upgradeToMaxLevel(LivingEntity entity) {
+        boolean hasMimic = entity.hasEffect(blueduck.compound_v.registry.EffectReg.MIMIC.get());
         java.util.List<MobEffectInstance> toUpgrade = new java.util.ArrayList<>();
         boolean hasPowerAbsorption = false;
         for (MobEffectInstance inst : entity.getActiveEffects()) {
             if (inst.getEffect() instanceof CompoundVEffect
                     && !(inst.getEffect() instanceof BadCompoundVEffect)) {
+                // Skip Mimic-copied powers: a non-Mimic CompoundV effect on a Mimic
+                // holder was copied and must not be upgraded or made permanent.
+                if (hasMimic && !(inst.getEffect() instanceof blueduck.compound_v.effect.MimicEffect)) {
+                    continue;
+                }
                 if (inst.getEffect() == blueduck.compound_v.registry.EffectReg.POWER_ABSORPTION.get()) {
                     hasPowerAbsorption = true;
                 } else {
@@ -100,9 +106,16 @@ public class V1Item extends Item {
         for (MobEffectInstance old : toUpgrade) {
             int maxLevel = CompoundVEffectMatrix.getMaxLevel(old.getEffect());
             if (maxLevel < 0) maxLevel = old.getAmplifier();
+            int target = maxLevel;
+            // Overcharge: if enabled, a multi-level power (maxLevel >= 1) that is already
+            // sitting at its max gets pushed one level beyond. Single-level powers
+            // (maxLevel == 0) and unlisted powers are never overcharged.
+            if (blueduck.compound_v.Config.v1LevelUpMaxed && maxLevel >= 1 && old.getAmplifier() >= maxLevel) {
+                target = maxLevel + 1;
+            }
             entity.removeEffect(old.getEffect());
             MobEffectInstance upgraded = new MobEffectInstance(old.getEffect(),
-                    MobEffectInstance.INFINITE_DURATION, maxLevel, false, false, false);
+                    MobEffectInstance.INFINITE_DURATION, target, false, false, false);
             upgraded.setCurativeItems(new java.util.ArrayList<>());
             entity.addEffect(upgraded);
         }

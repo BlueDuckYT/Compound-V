@@ -27,17 +27,25 @@ public class S2CLaserSyncPacket {
     public static final int COLOR_YELLOW = 5;
     public static final int COLOR_CHEST_BLAST = 6;
     public static final int COLOR_RAINBOW = 7;
+    public static final int COLOR_BLACK = 8;
+    public static final int COLOR_WHITE = 9;
 
     private final int entityId;
     private final double hitX, hitY, hitZ;
     private final int colorIndex;
+    private final float intensity;
 
     public S2CLaserSyncPacket(int entityId, double hitX, double hitY, double hitZ, int colorIndex) {
+        this(entityId, hitX, hitY, hitZ, colorIndex, 1.0f);
+    }
+
+    public S2CLaserSyncPacket(int entityId, double hitX, double hitY, double hitZ, int colorIndex, float intensity) {
         this.entityId = entityId;
         this.hitX = hitX;
         this.hitY = hitY;
         this.hitZ = hitZ;
         this.colorIndex = colorIndex;
+        this.intensity = intensity;
     }
 
     public S2CLaserSyncPacket(FriendlyByteBuf buf) {
@@ -46,6 +54,7 @@ public class S2CLaserSyncPacket {
         this.hitY = buf.readDouble();
         this.hitZ = buf.readDouble();
         this.colorIndex = buf.readInt();
+        this.intensity = buf.readFloat();
     }
 
     public void toBytes(FriendlyByteBuf buf) {
@@ -54,13 +63,14 @@ public class S2CLaserSyncPacket {
         buf.writeDouble(hitY);
         buf.writeDouble(hitZ);
         buf.writeInt(colorIndex);
+        buf.writeFloat(intensity);
     }
 
     public boolean handle(Supplier<NetworkEvent.Context> supplier) {
         NetworkEvent.Context context = supplier.get();
         context.enqueueWork(() -> {
             DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () -> {
-                LaserClientData.setLaserActive(entityId, hitX, hitY, hitZ, colorIndex);
+                LaserClientData.setLaserActive(entityId, hitX, hitY, hitZ, colorIndex, intensity);
             });
         });
         return true;

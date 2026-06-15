@@ -56,6 +56,30 @@ public class ForgeEvents {
 
     @SubscribeEvent
     public static void playerTickEvent(LivingEvent.LivingTickEvent event) {
+        LivingEntity le = event.getEntity();
+
+        // Carried-player dismount: a player being carried (riding another player) hops down
+        // when they sneak. Pairs with the sneak+right-click pickup.
+        if (!le.level().isClientSide && le instanceof Player carried
+                && carried.isPassenger() && carried.getVehicle() instanceof Player
+                && carried.isShiftKeyDown()) {
+            carried.stopRiding();
+        }
+
+        // Telekinesis watchdog: a held entity has its gravity suspended by the HOLDER each
+        // tick. If the holder vanishes (logs out, dies, changes dimension) or the victim is
+        // pulled through a portal into another dimension, the holder can no longer clear that
+        // state and the victim is left frozen mid-air. The victim restores its OWN gravity
+        // here once its held-stamp goes stale (holder hasn't refreshed it within a few ticks).
+        if (!le.level().isClientSide) {
+            var pd = le.getPersistentData();
+            if (pd.contains("CompoundVTKHeldUntil")
+                    && le.level().getGameTime() > pd.getLong("CompoundVTKHeldUntil")) {
+                le.setNoGravity(false);
+                pd.remove("CompoundVTKHeldUntil");
+            }
+        }
+
         Player player = event.getEntity() instanceof Player ? (Player) event.getEntity() : null;
 
         if (player instanceof ServerPlayer) {
@@ -142,28 +166,81 @@ public class ForgeEvents {
     // --- Mob Power Events ---
 
     /**
-     * Shrink jump boost: fires at the exact moment of a jump, before physics.
+     * Shrink / Size Control jump boost: fires at the exact moment of a jump, before physics.
      * Multiplies Y velocity for higher jumps. Works for both players and mobs.
      */
     @SubscribeEvent
     public static void onLivingJump(LivingEvent.LivingJumpEvent event) {
         LivingEntity entity = event.getEntity();
-        if (!entity.hasEffect(EffectReg.SHRINK.get())) return;
         if (CompoundVEffect.arePowersSuppressed(entity)) return;
         if (!net.minecraftforge.fml.ModList.get().isLoaded("pehkui")) return;
-        if (blueduck.compound_v.util.PehkuiHelper.getTargetScale(entity) >= 0.9f) return;
 
-        // Multiply jump velocity — 2.4x gives ~3-4 blocks
+        boolean hasShrink = entity.hasEffect(EffectReg.SHRINK.get());
+        boolean hasSizeControl = entity.hasEffect(EffectReg.SIZE_CONTROL_ADVANCED.get());
+        if (!hasShrink && !hasSizeControl) return;
+
+        float scale = blueduck.compound_v.util.PehkuiHelper.getCurrentScale(entity);
+        if (scale >= 0.9f) return; // only boost while actually small
+
+        double jumpMult;
+        if (hasShrink) {
+            // Shrink: fixed boost (~3-4 blocks).
+            jumpMult = 2.4;
+        } else {
+            // Size Control: ramp from no boost at scale 1.0 up to Shrink's 2.4x at min size,
+            // proportional to smallness so min size == Shrink's jump.
+            double minScale = blueduck.compound_v.Config.sizeControlMinScale;
+            double span = Math.max(0.0001, 1.0 - minScale);
+            double t = Math.max(0.0, Math.min(1.0, (1.0 - scale) / span));
+            jumpMult = 1.0 + (2.4 - 1.0) * t;
+        }
+
         net.minecraft.world.phys.Vec3 motion = entity.getDeltaMovement();
-        entity.setDeltaMovement(motion.x, motion.y * 2.4, motion.z);
+        entity.setDeltaMovement(motion.x, motion.y * jumpMult, motion.z);
     }
 
     @SubscribeEvent
     public static void entityJoinLevel(EntityJoinLevelEvent event) {
+        // Aimlock homing is handled per-tick in serverTickHoming by scanning
+        // projectiles by owner — registering at join is unreliable because a
+        // projectile's owner often isn't resolved yet at the join event.
+
         if (!Config.enableMobPowers) return;
         if (!(event.getEntity() instanceof Mob mob)) return;
         if (!(mob.level() instanceof ServerLevel level)) return;
         MobPowerManager.onMobJoinLevel(mob, level);
+    }
+
+    @SubscribeEvent
+    public static void serverTickHoming(net.minecraftforge.event.TickEvent.LevelTickEvent event) {
+        if (event.phase != net.minecraftforge.event.TickEvent.Phase.END) return;
+        if (event.level instanceof ServerLevel sl) {
+            blueduck.compound_v.effect.AimlockEffect.tickHomingProjectiles(sl);
+            MobPowerManager.tickWebClears(sl);
+        }
+    }
+
+    @SubscribeEvent
+    public static void pyroFireballExplosion(net.minecraftforge.event.level.ExplosionEvent.Detonate event) {
+        // Honor pyroFireballBreaksBlocks: if disabled, strip blocks from the explosion
+        // of a LargeFireball owned by a Pyrokinesis user (keeps the boom + entity damage).
+        if (Config.pyroFireballBreaksBlocks) return;
+        net.minecraft.world.level.Explosion explosion = event.getExplosion();
+        net.minecraft.world.entity.Entity source = explosion.getDirectSourceEntity();
+        if (source instanceof net.minecraft.world.entity.projectile.LargeFireball fb
+                && fb.getOwner() instanceof Player owner
+                && owner.hasEffect(EffectReg.PYROKINESIS.get())) {
+            event.getAffectedBlocks().clear();
+        }
+    }
+
+    @SubscribeEvent
+    public static void spiderFlingPrime(net.minecraftforge.event.entity.player.AttackEntityEvent event) {
+        if (event.getEntity() instanceof ServerPlayer sp
+                && sp.hasEffect(EffectReg.SPIDER.get())
+                && !CompoundVEffect.arePowersSuppressed(sp)) {
+            blueduck.compound_v.effect.SpiderEffect.notifyAttack(sp, event.getTarget());
+        }
     }
 
     @SubscribeEvent
@@ -175,8 +252,71 @@ public class ForgeEvents {
         MobPowerManager.onMobTick(mob, level);
     }
 
+    /**
+     * Forcefield absorbs RAW, pre-armor damage. LivingAttackEvent carries the original
+     * unmodified amount (before armor/enchantments), unlike LivingHurtEvent. If the shield
+     * fully absorbs the raw hit, the attack is cancelled outright (armor never even involved).
+     * If the shield breaks under the hit, we cancel the original and re-apply only the leftover
+     * as a fresh, shield-bypassing hit so armor reduces just that remainder.
+     */
+    private static final java.util.Set<java.util.UUID> forcefieldPassthrough = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    @SubscribeEvent
+    public static void forcefieldRawAbsorb(net.minecraftforge.event.entity.living.LivingAttackEvent event) {
+        LivingEntity owner = event.getEntity();
+        // Re-applied remainder hits are tagged to pass straight through.
+        if (forcefieldPassthrough.remove(owner.getUUID())) return;
+
+        if (!owner.hasEffect(EffectReg.FORCEFIELD.get())
+                || !ForcefieldEffect.isActive(owner.getUUID())
+                || CompoundVEffect.arePowersSuppressed(owner)) {
+            return;
+        }
+        // Don't shield out-of-world / generic non-reducible kill damage.
+        if (event.getSource().is(net.minecraft.world.damagesource.DamageTypes.FELL_OUT_OF_WORLD)
+                || event.getSource().is(net.minecraft.world.damagesource.DamageTypes.GENERIC_KILL)) {
+            return;
+        }
+
+        float raw = event.getAmount();
+        float remaining = ForcefieldEffect.absorbDamage(owner, raw);
+
+        // Absorb visual/sound regardless of full/partial.
+        if (owner.level() instanceof ServerLevel sl) {
+            sl.sendParticles(ParticleTypes.ELECTRIC_SPARK,
+                    owner.getX(), owner.getY() + 1, owner.getZ(), 5, 0.5, 0.5, 0.5, 0.05);
+            sl.playSound(null, owner.getX(), owner.getY(), owner.getZ(),
+                    SoundEvents.SHIELD_BLOCK, SoundSource.PLAYERS, 0.4F, 1.5F);
+        }
+
+        // Cancel the raw hit entirely — the shield handled it (fully or up to the break point).
+        event.setCanceled(true);
+
+        // If the shield broke, the leftover raw damage still needs to land. Re-apply it as a
+        // fresh hit that bypasses the shield (tagged), so armor reduces just the remainder.
+        if (remaining > 0) {
+            forcefieldPassthrough.add(owner.getUUID());
+            owner.invulnerableTime = 0; // the cancelled hit may have set iframes; clear so this lands
+            owner.hurt(event.getSource(), remaining);
+        }
+    }
+
     @SubscribeEvent
     public static void entityHurtEvent(LivingHurtEvent event) {
+        // Pyrokinesis: immune to fire and lava.
+        if (blueduck.compound_v.effect.PyrokinesisEffect.hasFireImmunity(event.getEntity())) {
+            net.minecraft.world.damagesource.DamageSource src = event.getSource();
+            if (src.is(net.minecraft.world.damagesource.DamageTypes.IN_FIRE)
+                    || src.is(net.minecraft.world.damagesource.DamageTypes.ON_FIRE)
+                    || src.is(net.minecraft.world.damagesource.DamageTypes.LAVA)
+                    || src.is(net.minecraft.world.damagesource.DamageTypes.HOT_FLOOR)
+                    || src.is(net.minecraft.world.damagesource.DamageTypes.FIREBALL)
+                    || src.is(net.minecraft.world.damagesource.DamageTypes.UNATTRIBUTED_FIREBALL)) {
+                event.setCanceled(true);
+                return;
+            }
+        }
+
         // === Unstoppable Force vs Immovable Object ===
         // Instakill attacker hits Invincible defender: massive mutual knockback, no damage
         if (event.getSource().getEntity() instanceof LivingEntity attacker
@@ -246,35 +386,8 @@ public class ForgeEvents {
             return;
         }
 
-        // Forcefield damage absorption — must be checked before other damage modifiers
-        if (event.getEntity() instanceof Player shieldPlayer
-                && shieldPlayer.hasEffect(EffectReg.FORCEFIELD.get())
-                && ForcefieldEffect.isActive(shieldPlayer.getUUID())
-                && !CompoundVEffect.arePowersSuppressed(shieldPlayer)) {
-            float remaining = ForcefieldEffect.absorbDamage(shieldPlayer, event.getAmount());
-            if (remaining <= 0) {
-                event.setAmount(0);
-                // Shield absorb visual
-                if (shieldPlayer.level() instanceof ServerLevel sl) {
-                    sl.sendParticles(ParticleTypes.ELECTRIC_SPARK,
-                            shieldPlayer.getX(), shieldPlayer.getY() + 1, shieldPlayer.getZ(),
-                            5, 0.5, 0.5, 0.5, 0.05);
-                    sl.playSound(null, shieldPlayer.getX(), shieldPlayer.getY(), shieldPlayer.getZ(),
-                            SoundEvents.SHIELD_BLOCK, SoundSource.PLAYERS, 0.4F, 1.5F);
-                }
-                return;
-            } else {
-                event.setAmount(remaining);
-                // Shield broke!
-                if (shieldPlayer.level() instanceof ServerLevel sl) {
-                    sl.sendParticles(ParticleTypes.FLASH,
-                            shieldPlayer.getX(), shieldPlayer.getY() + 1, shieldPlayer.getZ(),
-                            3, 0, 0, 0, 0);
-                    sl.playSound(null, shieldPlayer.getX(), shieldPlayer.getY(), shieldPlayer.getZ(),
-                            SoundEvents.SHIELD_BREAK, SoundSource.PLAYERS, 1.0F, 0.8F);
-                }
-            }
-        }
+        // (Forcefield absorption moved to LivingAttackEvent so it absorbs RAW pre-armor damage —
+        //  see forcefieldRawAbsorb below.)
 
         // Defensive teleport: passive mobs with Teleport blink away when damaged
         if (event.getEntity() instanceof Mob hurtMob
@@ -286,8 +399,28 @@ public class ForgeEvents {
             MobPowerManager.defensiveTeleport(hurtMob, dmgSource, sl);
         }
 
+        // Size powers: any entity scaled below normal takes no fall damage. This is a
+        // single robust check covering Shrink, Size Control, etc. rather than per-effect.
+        if (event.getSource().is(DamageTypes.FALL)
+                && net.minecraftforge.fml.ModList.get().isLoaded("pehkui")
+                && blueduck.compound_v.util.PehkuiHelper.getTargetScale(event.getEntity()) < 0.95f) {
+            event.setAmount(0);
+            return;
+        }
+
+        // Spider: never takes fall damage (web-slinging means constant big drops). Checked
+        // early and with a hard return so nothing downstream can re-introduce the damage —
+        // the per-effect branch below was order-dependent and could be missed.
+        if (event.getSource().is(DamageTypes.FALL)
+                && event.getEntity().hasEffect(EffectReg.SPIDER.get())
+                && !CompoundVEffect.arePowersSuppressed(event.getEntity())) {
+            event.setAmount(0);
+            return;
+        }
+
         List<MobEffectInstance> effects = new ArrayList<>(event.getEntity().getActiveEffects());
         boolean powersSuppressed = CompoundVEffect.arePowersSuppressed(event.getEntity());
+        boolean statsSuppressed = CompoundVEffect.areStatsSuppressed(event.getEntity());
         for (MobEffectInstance instance : effects) {
 
             if (!powersSuppressed && !event.getSource().is(DamageTypes.FELL_OUT_OF_WORLD)
@@ -354,8 +487,19 @@ public class ForgeEvents {
                     && blueduck.compound_v.effect.EnlargeEffect.isEnlarged(event.getEntity())) {
                 event.setAmount(event.getAmount() * blueduck.compound_v.effect.EnlargeEffect.ENLARGE_DAMAGE_REDUCTION);
             }
-            // General Compound V damage reduction — use best tier across all active effects
-            else if (!powersSuppressed && !event.getSource().is(DamageTypes.FELL_OUT_OF_WORLD)
+            // Size Control (Advanced): congruent damage reduction scaled by current size,
+            // matching Enlarge's 40% at scale 3.0. No effect at or below normal size.
+            else if (instance.getEffect().equals(EffectReg.SIZE_CONTROL_ADVANCED.get())
+                    && !event.getSource().is(DamageTypes.FELL_OUT_OF_WORLD)
+                    && net.minecraftforge.fml.ModList.get().isLoaded("pehkui")) {
+                float factor = blueduck.compound_v.effect.SizeControlAdvancedEffect
+                        .damageReductionFactor(event.getEntity());
+                if (factor < 1.0f) event.setAmount(event.getAmount() * factor);
+            }
+            // General Compound V damage reduction — use best tier across all active effects.
+            // Gated by stat suppression (virus) not power suppression, so NULLIFIED
+            // holders keep their defensive stat boost.
+            else if (!statsSuppressed && !event.getSource().is(DamageTypes.FELL_OUT_OF_WORLD)
                     && instance.getEffect() instanceof CompoundVEffect cvEffect) {
                 // Only apply once per entity (first CompoundVEffect match handles it for all)
                 if (!event.getEntity().getPersistentData().getBoolean("compound_v_dr_applied")) {
@@ -384,7 +528,7 @@ public class ForgeEvents {
         // Strength multiplier for players with Compound V (melee only, best tier)
         if (event.getSource().is(DamageTypes.PLAYER_ATTACK)
                 && event.getSource().getEntity() instanceof Player attacker
-                && !CompoundVEffect.arePowersSuppressed(attacker)) {
+                && !CompoundVEffect.areStatsSuppressed(attacker)) {
             double bestSTR = 1.0;
             for (MobEffectInstance instance : new ArrayList<>(attacker.getActiveEffects())) {
                 if (instance.getEffect() instanceof CompoundVEffect cvEffect) {
@@ -394,8 +538,9 @@ public class ForgeEvents {
             }
             if (bestSTR > 1.0) event.setAmount((float) (event.getAmount() * bestSTR));
 
-            // Instakill: melee attacks instantly kill the target
+            // Instakill is a POWER, not a stat — suppressed by nullify/virus
             if (attacker.hasEffect(EffectReg.INSTAKILL.get())
+                    && !CompoundVEffect.arePowersSuppressed(attacker)
                     && event.getSource().is(DamageTypes.PLAYER_ATTACK)) {
                 event.setAmount(Float.MAX_VALUE);
             }
@@ -404,7 +549,7 @@ public class ForgeEvents {
         else if (event.getSource().is(DamageTypes.MOB_ATTACK)
                 && event.getSource().getEntity() instanceof LivingEntity mobAttacker
                 && !(mobAttacker instanceof Player)
-                && !CompoundVEffect.arePowersSuppressed(mobAttacker)) {
+                && !CompoundVEffect.areStatsSuppressed(mobAttacker)) {
             for (MobEffectInstance instance : new ArrayList<>(mobAttacker.getActiveEffects())) {
                 if (instance.getEffect() instanceof CompoundVEffect) {
                     if (mobAttacker instanceof net.minecraft.world.entity.monster.Enemy) {
@@ -462,15 +607,18 @@ public class ForgeEvents {
 
     @SubscribeEvent
     public static void entityKnockbackEvent(LivingKnockBackEvent event) {
+        boolean kbPowersSuppressed = CompoundVEffect.arePowersSuppressed(event.getEntity());
+        boolean kbStatsSuppressed = CompoundVEffect.areStatsSuppressed(event.getEntity());
         // Defensive: reduce knockback taken
-        if (!CompoundVEffect.arePowersSuppressed(event.getEntity())) {
+        if (!kbStatsSuppressed) {
             List<MobEffectInstance> effects = new ArrayList<>(event.getEntity().getActiveEffects());
             for (MobEffectInstance instance : effects) {
-                if (instance.getEffect().equals(EffectReg.INVINCIBLE.get())) {
+                // Invincible full KB negation is a POWER — lost under nullify/virus
+                if (!kbPowersSuppressed && instance.getEffect().equals(EffectReg.INVINCIBLE.get())) {
                     event.setStrength(0);
                 }
-                // Density: full knockback negation when dense
-                else if (instance.getEffect().equals(EffectReg.DENSITY.get())
+                // Density: full knockback negation when dense (POWER)
+                else if (!kbPowersSuppressed && instance.getEffect().equals(EffectReg.DENSITY.get())
                         && event.getEntity() instanceof Player p
                         && DensityEffect.isDense(p.getUUID())) {
                     event.setStrength(0);
@@ -498,7 +646,7 @@ public class ForgeEvents {
         // Offensive: amplify knockback dealt by the attacker
         net.minecraft.world.damagesource.DamageSource lastSource = event.getEntity().getLastDamageSource();
         if (lastSource != null && lastSource.getEntity() instanceof LivingEntity attacker
-                && !CompoundVEffect.arePowersSuppressed(attacker)) {
+                && !CompoundVEffect.areStatsSuppressed(attacker)) {
             double bestKBD = 1.0;
             for (MobEffectInstance inst : attacker.getActiveEffects()) {
                 if (inst.getEffect() instanceof CompoundVEffect cvEffect) {
@@ -517,8 +665,55 @@ public class ForgeEvents {
      * The totem calls removeAllEffects() which wipes everything — we snapshot here
      * and restore on the next tick if the player is still alive.
      */
+    // Guards the lifesteal heal so it isn't cancelled by our own regen-suppression.
+    private static final java.util.Set<java.util.UUID> lifestealHealing = java.util.concurrent.ConcurrentHashMap.newKeySet();
+
+    @SubscribeEvent
+    public static void lifestealHealCancel(net.minecraftforge.event.entity.living.LivingHealEvent event) {
+        LivingEntity entity = event.getEntity();
+        if (!blueduck.compound_v.effect.LifestealEffect.suppressesNaturalRegen(entity)) return;
+        // Always allow lifesteal's own heal.
+        if (lifestealHealing.contains(entity.getUUID())) return;
+
+        if (Config.lifestealBlocksAllHealing) {
+            // Hardcore: melee lifesteal is the ONLY heal source.
+            event.setCanceled(true);
+            return;
+        }
+        // Default: block natural hunger-regen only. Vanilla natural regen only fires
+        // when the player is well-fed (food >= 18) and is the dominant heal source in
+        // that state; potions/golden apples heal independently of food level, so we
+        // spare heals that occur while food is low.
+        if (entity instanceof Player p && p.getFoodData().getFoodLevel() >= 18) {
+            event.setCanceled(true);
+        }
+    }
+
     @SubscribeEvent
     public static void onLivingDamage(net.minecraftforge.event.entity.living.LivingDamageEvent event) {
+        // Lifesteal: a melee attacker with the power heals for a fraction of damage dealt.
+        if (event.getSource().is(DamageTypes.PLAYER_ATTACK) || event.getSource().is(DamageTypes.MOB_ATTACK)) {
+            if (event.getSource().getEntity() instanceof LivingEntity attacker
+                    && attacker.hasEffect(EffectReg.LIFESTEAL.get())
+                    && !CompoundVEffect.arePowersSuppressed(attacker)
+                    && attacker != event.getEntity()) {
+                MobEffectInstance inst = attacker.getEffect(EffectReg.LIFESTEAL.get());
+                int amp = inst != null ? inst.getAmplifier() : 0;
+                float dealt = event.getAmount(); // post-mitigation damage actually dealt
+                float heal = (float) (dealt * blueduck.compound_v.effect.LifestealEffect.getHealFraction(amp));
+                if (heal > 0 && attacker.getHealth() < attacker.getMaxHealth()) {
+                    lifestealHealing.add(attacker.getUUID());
+                    attacker.heal(heal);
+                    lifestealHealing.remove(attacker.getUUID());
+                    if (attacker.level() instanceof ServerLevel sl) {
+                        sl.sendParticles(ParticleTypes.HEART,
+                                attacker.getX(), attacker.getY() + attacker.getBbHeight() * 0.8, attacker.getZ(),
+                                1, 0.3, 0.3, 0.3, 0.0);
+                    }
+                }
+            }
+        }
+
         if (!(event.getEntity() instanceof Player player)) return;
         if (player.level().isClientSide()) return;
 
@@ -539,6 +734,13 @@ public class ForgeEvents {
 
     @SubscribeEvent
     public static void projectileHit(ProjectileImpactEvent event) {
+        // Aimlock: any projectile that strikes a block stops homing and behaves
+        // normally afterward (prevents homing projectiles from skimming/ricocheting
+        // along terrain toward the target).
+        if (event.getRayTraceResult() instanceof net.minecraft.world.phys.BlockHitResult) {
+            blueduck.compound_v.effect.AimlockEffect.stopHoming(event.getProjectile().getUUID());
+        }
+
         // Projectile Immunity: deflect projectiles that hit entities with this effect
         if (event.getRayTraceResult() instanceof net.minecraft.world.phys.EntityHitResult entityHit
                 && entityHit.getEntity() instanceof LivingEntity hitEntity
@@ -576,6 +778,14 @@ public class ForgeEvents {
             }
 
             projectile.hurtMarked = true;
+
+            // Aimlock: a deflected projectile must stop homing and fly normally,
+            // otherwise it would curve straight back to the locked target forever
+            // (infinite ricochet). Blocklist it and restore arrow gravity.
+            blueduck.compound_v.effect.AimlockEffect.stopHoming(projectile.getUUID());
+            if (projectile instanceof net.minecraft.world.entity.projectile.AbstractArrow deflectedArrow) {
+                deflectedArrow.setNoGravity(false);
+            }
 
             // Visual/audio feedback
             if (hitEntity.level() instanceof ServerLevel sl) {
@@ -706,10 +916,86 @@ public class ForgeEvents {
     }
 
     /**
+     * Restore flight after crossing dimensions. Changing dimensions recreates the player's
+     * ability state and re-syncs it from a fresh default, which drops the mayfly flag granted
+     * by flight powers — leaving the player unable to fly until something else re-triggers it.
+     * We re-grant flight here for any player holding a flight-granting power.
+     */
+    @SubscribeEvent
+    public static void playerChangedDimension(PlayerEvent.PlayerChangedDimensionEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer player)) return;
+        if (player.isCreative() || player.isSpectator()) return;
+        if (CompoundVEffect.arePowersSuppressed(player)) return;
+        if (player.hasEffect(EffectReg.CREATIVE_FLIGHT.get())
+                || player.hasEffect(EffectReg.LASER_EYES_ADVANCED.get())
+                || player.hasEffect(EffectReg.STORMFRONT.get())) {
+            if (!player.getAbilities().mayfly) {
+                player.getAbilities().mayfly = true;
+                player.onUpdateAbilities();
+            }
+        }
+    }
+
+    /**
      * Right-click a mob with Compound V or Temp V to inject them.
      * Uses the mob-specific power pool (only powers that function on non-players).
      * Respects bad outcome chance. Sets MobPowerManager NBT tags for tick visuals.
      */
+    /** True if the entity has at least one Compound V (positive) power active. */
+    private static boolean hasAnyCompV(LivingEntity e) {
+        for (net.minecraft.world.effect.MobEffectInstance inst : e.getActiveEffects()) {
+            if (inst.getEffect() instanceof CompoundVEffect) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Big-player pickup: a sufficiently larger player can sneak + right-click a smaller player
+     * to carry them (the small player rides as a passenger). Sneak/right-click again, or the
+     * carrier sneaking, sets them down. Gated by config (enable, size ratio, and optionally
+     * requiring at least one party to have Compound V).
+     */
+    @SubscribeEvent
+    public static void playerPickup(PlayerInteractEvent.EntityInteract event) {
+        if (event.getLevel().isClientSide()) return;
+        if (!Config.playerPickupEnabled) return;
+        if (!(event.getTarget() instanceof Player target)) return;
+        Player carrier = event.getEntity();
+        if (carrier == target) return;
+        if (!carrier.isShiftKeyDown()) return;
+        // Only run for one hand to avoid double-firing.
+        if (event.getHand() != net.minecraft.world.InteractionHand.MAIN_HAND) return;
+
+        // If the carrier is already carrying this target, set them down instead.
+        if (target.getVehicle() == carrier) {
+            target.stopRiding();
+            event.setCanceled(true);
+            return;
+        }
+        // Don't pick up someone already riding something, or if the carrier is itself a passenger.
+        if (target.isPassenger() || carrier.isPassenger()) return;
+
+        // Compound V gate: either party having a power satisfies it.
+        if (Config.playerPickupRequiresCompoundV
+                && !hasAnyCompV(carrier) && !hasAnyCompV(target)) {
+            return;
+        }
+
+        // Size gate: carrier must be at least the configured ratio larger than the target.
+        float carrierScale = 1.0f, targetScale = 1.0f;
+        if (net.minecraftforge.fml.ModList.get().isLoaded("pehkui")) {
+            carrierScale = blueduck.compound_v.util.PehkuiHelper.getCurrentScale(carrier);
+            targetScale = blueduck.compound_v.util.PehkuiHelper.getCurrentScale(target);
+        }
+        if (carrierScale < targetScale * (float) Config.playerPickupSizeRatio) {
+            return; // not big enough relative to the target
+        }
+
+        // Pick them up.
+        target.startRiding(carrier, true);
+        event.setCanceled(true);
+    }
+
     @SubscribeEvent
     public static void entityInteract(PlayerInteractEvent.EntityInteract event) {
         if (event.getLevel().isClientSide()) return;
@@ -782,10 +1068,11 @@ public class ForgeEvents {
 
         boolean permanent = isCompoundV || isV1;
 
-        if (isBad && !blueduck.compound_v.registry.CompoundVEffectMatrix.MOB_FAILURE_MATRIX.isEmpty()) {
-            blueduck.compound_v.registry.CompoundVEffectMatrix.MOB_FAILURE_MATRIX.get(
+        if (isBad && !blueduck.compound_v.registry.CompoundVEffectMatrix.FAILURE_MATRIX.isEmpty()) {
+            // Single shared failure pool for V, V1, and mobs alike.
+            blueduck.compound_v.registry.CompoundVEffectMatrix.FAILURE_MATRIX.get(
                     event.getLevel().getRandom().nextInt(
-                            blueduck.compound_v.registry.CompoundVEffectMatrix.MOB_FAILURE_MATRIX.size()
+                            blueduck.compound_v.registry.CompoundVEffectMatrix.FAILURE_MATRIX.size()
                     )).apply(target, permanent);
         } else {
             // Use MobPowerManager's species-specific pool for power selection
@@ -1004,7 +1291,7 @@ public class ForgeEvents {
         return net.minecraft.commands.Commands.argument("color",
                 com.mojang.brigadier.arguments.StringArgumentType.word())
             .suggests((ctx, builder) -> {
-                for (String s : new String[]{"orange","blue","red","green","purple","yellow","rainbow"})
+                for (String s : new String[]{"orange","blue","red","green","purple","yellow","rainbow","black","white"})
                     builder.suggest(s);
                 return builder.buildFuture();
             })
@@ -1058,6 +1345,8 @@ public class ForgeEvents {
             case "purple" -> S2CLaserSyncPacket.COLOR_PURPLE;
             case "yellow" -> S2CLaserSyncPacket.COLOR_YELLOW;
             case "rainbow" -> S2CLaserSyncPacket.COLOR_RAINBOW;
+            case "black" -> S2CLaserSyncPacket.COLOR_BLACK;
+            case "white" -> S2CLaserSyncPacket.COLOR_WHITE;
             default -> -1;
         };
     }

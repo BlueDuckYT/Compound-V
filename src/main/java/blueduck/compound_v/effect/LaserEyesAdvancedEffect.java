@@ -16,7 +16,7 @@ import org.joml.Vector3f;
 /**
  * Advanced (Homelander-level) laser eyes.
  * Red beams, higher damage, higher fire chance, and permanent creative flight.
- * Flight stays on — V press does NOT toggle it off.
+ * Flight stays on - V press does NOT toggle it off.
  */
 public class LaserEyesAdvancedEffect extends LaserEyesEffect {
 
@@ -33,6 +33,9 @@ public class LaserEyesAdvancedEffect extends LaserEyesEffect {
     public PowerType getPowerType() {
         return PowerType.ACTIVE;
     }
+
+    @Override
+    public boolean canFly() { return true; }
 
     @Override
     protected boolean isAdvanced() {
@@ -99,15 +102,58 @@ public class LaserEyesAdvancedEffect extends LaserEyesEffect {
                         entity.getX(), entity.getY() + entity.getEyeHeight(), entity.getZ(),
                         2, 0.15, 0.05, 0.15, 0.01);
             }
+
+            // --- Predator sense: hear the heartbeat of nearby low-health players ---
+            // Only THIS holder hears it (private via a targeted packet). Directional at the target's
+            // position, and the beat quickens as their health drops. Gated by config.
+            if (blueduck.compound_v.Config.laserHeartbeatEnabled
+                    && entity.level() instanceof ServerLevel sl) {
+                double range = blueduck.compound_v.Config.laserHeartbeatRange;
+                double threshold = blueduck.compound_v.Config.laserHeartbeatHealthThreshold; // 0..1
+                long now = sl.getGameTime();
+                net.minecraft.world.phys.AABB box = player.getBoundingBox().inflate(range);
+                for (ServerPlayer target : sl.getEntitiesOfClass(ServerPlayer.class, box,
+                        p -> p != player && p.isAlive())) {
+                    float frac = target.getHealth() / target.getMaxHealth();
+                    if (frac > threshold) continue;
+                    if (player.distanceTo(target) > range) continue;
+
+                    // Beat interval scales with health: slow thump near the threshold, rapid near
+                    // death. Lerp between the configured slow and fast intervals by how deep into
+                    // the "wounded" band the target is (frac from threshold down to 0).
+                    double t = threshold > 0 ? (frac / threshold) : 0.0; // 1 at threshold, 0 at death
+                    int slow = blueduck.compound_v.Config.laserHeartbeatSlowInterval;
+                    int fast = blueduck.compound_v.Config.laserHeartbeatFastInterval;
+                    int interval = (int) Math.round(fast + (slow - fast) * t);
+                    if (interval < 1) interval = 1;
+
+                    long key = (((long) player.getId()) << 32) | (target.getId() & 0xFFFFFFFFL);
+                    long next = nextBeat.getOrDefault(key, 0L);
+                    if (now >= next) {
+                        // Higher pitch as health drops (subtle urgency).
+                        float pitch = (float) (0.8 + (1.0 - t) * 0.5);
+                        blueduck.compound_v.keybinds.PacketHandler.sendToPlayer(
+                                new blueduck.compound_v.util.S2CHeartbeatPacket(
+                                        target.getX(), target.getY() + target.getBbHeight() * 0.5,
+                                        target.getZ(), pitch),
+                                player);
+                        nextBeat.put(key, now + interval);
+                    }
+                }
+            }
         }
     }
+
+    // Per (holder<<32 | target) next game-tick at which to play that target's heartbeat for that
+    // holder, so each wounded player has an independent, health-scaled beat rate.
+    private static final java.util.Map<Long, Long> nextBeat = new java.util.concurrent.ConcurrentHashMap<>();
 
     @Override
     public boolean isDurationEffectTick(int tick, int amplifier) {
         return tick % 10 == 0;
     }
 
-    // No activate() override — V press does NOT toggle flight off.
+    // No activate() override - V press does NOT toggle flight off.
 
     @Override
     public void holdActivate(ServerPlayer player, int amplifier, ServerLevel level) {

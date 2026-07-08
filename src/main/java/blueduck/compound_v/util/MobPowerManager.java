@@ -212,7 +212,7 @@ public class MobPowerManager {
             amp += mob.getRandom().nextInt(chosen.maxAmp() - chosen.minAmp() + 1);
         }
 
-        // Apply infinite-duration effect (no particles, no icon — the blue sparkles replace those)
+        // Apply infinite-duration effect (no particles, no icon - the blue sparkles replace those)
         MobEffectInstance effect = new MobEffectInstance(
                 chosen.power().get(), MobEffectInstance.INFINITE_DURATION, amp, false, false, false);
         mob.addEffect(effect);
@@ -233,12 +233,12 @@ public class MobPowerManager {
             }
         }
 
-        // Shrink mobs start small immediately (stealth — they grow when aggroed)
+        // Shrink mobs start small immediately (stealth - they grow when aggroed)
         if (mob.hasEffect(EffectReg.SHRINK.get()) && ModList.get().isLoaded("pehkui")) {
             PehkuiHelper.setScale(mob, MOB_SHRINK_SCALE);
         }
 
-        // Flying mobs get a bonus laser eyes roll — 35% basic, 10% advanced, 55% none
+        // Flying mobs get a bonus laser eyes roll - 35% basic, 10% advanced, 55% none
         if (mob.hasEffect(EffectReg.CREATIVE_FLIGHT.get()) && !mob.hasEffect(EffectReg.LASER_EYES_BASIC.get())
                 && !mob.hasEffect(EffectReg.LASER_EYES_ADVANCED.get())) {
             float laserRoll = mob.getRandom().nextFloat();
@@ -323,6 +323,25 @@ public class MobPowerManager {
         return S2CLaserSyncPacket.COLOR_RED;
     }
 
+    private static final String CHEST_BLAST_COLOR_TAG = "compound_v_chestblast_color";
+
+    /**
+     * Per-mob chest-blast beam color, rolled once and stored in the mob's persistent data.
+     * Mostly the default gold; each variant is a rare 1/200 roll (rainbow, black, red, green).
+     */
+    private static int getMobChestBlastColor(Mob mob) {
+        var data = mob.getPersistentData();
+        if (data.contains(CHEST_BLAST_COLOR_TAG)) return data.getInt(CHEST_BLAST_COLOR_TAG);
+        int color = S2CLaserSyncPacket.COLOR_CHEST_BLAST; // default gold
+        var rng = mob.getRandom();
+        if (rng.nextInt(200) == 0) color = S2CLaserSyncPacket.COLOR_RAINBOW;
+        else if (rng.nextInt(200) == 0) color = S2CLaserSyncPacket.COLOR_BLACK;
+        else if (rng.nextInt(200) == 0) color = S2CLaserSyncPacket.COLOR_RED;
+        else if (rng.nextInt(200) == 0) color = S2CLaserSyncPacket.COLOR_GREEN;
+        data.putInt(CHEST_BLAST_COLOR_TAG, color);
+        return color;
+    }
+
     /**
      * Builds the weighted power pool based on the mob's class hierarchy.
      * More specific classes are checked first (Drowned before Zombie) using
@@ -364,7 +383,7 @@ public class MobPowerManager {
         List<WeightedPower> eligible = new ArrayList<>();
 
         // =============================================================
-        //  GENERAL POOL — available to ALL mobs (any entity that can be injected).
+        //  GENERAL POOL - available to ALL mobs (any entity that can be injected).
         //  Per-power BASE weights are config-driven (mobWeight.* / Config.mobWeight*).
         //  Species-specific pools below add bias-scaled entries on top.
         // =============================================================
@@ -380,27 +399,29 @@ public class MobPowerManager {
         if (ModList.get().isLoaded("pehkui")) {
             addUniversal(eligible, EffectReg.SHRINK, Config.mobWeightShrink, 0, 0);
             addUniversal(eligible, EffectReg.ENLARGE, Config.mobWeightEnlarge, 0, 0);
+            addUniversal(eligible, EffectReg.SIZE_CONTROL_ADVANCED, Config.mobWeightSizeControlAdvanced, 0, 0);
         }
         addUniversal(eligible, EffectReg.LEAP, Config.mobWeightLeap, 0, 0);
+        addUniversal(eligible, EffectReg.SLIME, Config.mobWeightSlime, 0, 0);
         addUniversal(eligible, EffectReg.SPIDER, Config.mobWeightSpider, 0, 0);
         addUniversal(eligible, EffectReg.HEALING, Config.mobWeightHealing, 0, 0);
         addUniversal(eligible, EffectReg.LIFESTEAL, Config.mobWeightLifesteal, 0,
                 Math.max(0, (Config.lifestealLevelFractions != null ? Config.lifestealLevelFractions.length : 3) - 1));
-        // Pyrokinesis — every mob except Blazes (fire-immune, already fiery) and
+        // Pyrokinesis - every mob except Blazes (fire-immune, already fiery) and
         // Snow Golems (fire would be self-destructive/thematically wrong).
         if (!(mob instanceof Blaze) && !(mob instanceof net.minecraft.world.entity.animal.SnowGolem)) {
             addUniversal(eligible, EffectReg.PYROKINESIS, Config.mobWeightPyrokinesis, 0, 0);
         }
-        // Cryokinesis — every mob except nether mobs (fire-immune ⇒ nether-native).
+        // Cryokinesis - every mob except nether mobs (fire-immune ⇒ nether-native).
         if (!mob.fireImmune()) {
             addUniversal(eligible, EffectReg.CRYOKINESIS, Config.mobWeightCryokinesis, 0, 0);
         }
 
         // =============================================================
-        //  SPECIES-SPECIFIC POOLS — add more weighted entries to bias the roll
+        //  SPECIES-SPECIFIC POOLS - add more weighted entries to bias the roll
         // =============================================================
 
-        // === Iron Golem (neutral defender) — favor flight, lasers, tank ===
+        // === Iron Golem (neutral defender) - favor flight, lasers, tank ===
         if (mob instanceof net.minecraft.world.entity.animal.IronGolem) {
             addSpecies(eligible, new WeightedPower(EffectReg.LASER_EYES_BASIC, 8, 0, 0));
             addSpecies(eligible, new WeightedPower(EffectReg.LASER_EYES_ADVANCED, 3, 0, 0));
@@ -411,7 +432,7 @@ public class MobPowerManager {
             addSpecies(eligible, new WeightedPower(EffectReg.PROJECTILE_IMMUNITY, 4, 0, 0));
             addSpecies(eligible, new WeightedPower(EffectReg.HEALING, 3, 0, 0)); // great support golem
             addSpecies(eligible, new WeightedPower(EffectReg.LEAP, 3, 0, 0));    // golem leap smash
-            if (Config.weightChestBlast > 0) {
+            if (Config.mobWeightChestBlast > 0) {
                 addSpecies(eligible, new WeightedPower(EffectReg.CHEST_BLAST, 2, 0, 0));
             }
             if (ModList.get().isLoaded("pehkui")) {
@@ -426,7 +447,7 @@ public class MobPowerManager {
             addSpecies(eligible, new WeightedPower(EffectReg.PROJECTILE_IMMUNITY, 4, 0, 0));
             addSpecies(eligible, new WeightedPower(EffectReg.SPEEDSTER, 3, 0, 2));
         }
-        // === Wolf (loyal companion) — favor offensive ===
+        // === Wolf (loyal companion) - favor offensive ===
         else if (mob instanceof net.minecraft.world.entity.animal.Wolf) {
             addSpecies(eligible, new WeightedPower(EffectReg.LASER_EYES_BASIC, 5, 0, 0));
             addSpecies(eligible, new WeightedPower(EffectReg.LASER_EYES_ADVANCED, 2, 0, 0));
@@ -436,7 +457,7 @@ public class MobPowerManager {
             addSpecies(eligible, new WeightedPower(EffectReg.BERSERKER, 3, 0, 0));
             addSpecies(eligible, new WeightedPower(EffectReg.INVINCIBLE, 1, 0, 0));
         }
-        // === Passive animals (non-hostile, non-golem, non-wolf) — bias defensive ===
+        // === Passive animals (non-hostile, non-golem, non-wolf) - bias defensive ===
         else if (mob instanceof net.minecraft.world.entity.animal.Animal
                 && !(mob instanceof net.minecraft.world.entity.monster.Enemy)) {
             addSpecies(eligible, new WeightedPower(EffectReg.ENHANCED_REGEN, 5, 0, 0));
@@ -450,10 +471,10 @@ public class MobPowerManager {
         }
 
         // =============================================================
-        //  HOSTILE MOB POOLS — add species-specific combat powers
+        //  HOSTILE MOB POOLS - add species-specific combat powers
         // =============================================================
 
-        // === Zombie family (Drowned extends Zombie — check Drowned first) ===
+        // === Zombie family (Drowned extends Zombie - check Drowned first) ===
         if (mob instanceof Drowned) {
             addSpecies(eligible, new WeightedPower(EffectReg.DEEP, 10, 0, 0));
             addSpecies(eligible, new WeightedPower(EffectReg.LASER_EYES_BASIC, 2, 0, 0));
@@ -471,7 +492,7 @@ public class MobPowerManager {
         if (mob instanceof AbstractSkeleton) {
             addSpecies(eligible, new WeightedPower(EffectReg.ATOM_CHARGING, 8, 0, 2));  // levels 1-3
             addSpecies(eligible, new WeightedPower(EffectReg.TELEPORT, 4, 0, 0));
-            addSpecies(eligible, new WeightedPower(EffectReg.PROJECTILE_IMMUNITY, 2, 0, 0)); // ironic — arrows bounce off them
+            addSpecies(eligible, new WeightedPower(EffectReg.PROJECTILE_IMMUNITY, 2, 0, 0)); // ironic - arrows bounce off them
             if (mob instanceof WitherSkeleton) {
 
                 addSpecies(eligible, new WeightedPower(EffectReg.LASER_EYES_BASIC, 1, 0, 0));
@@ -489,7 +510,7 @@ public class MobPowerManager {
         // === Enderman ===
         if (mob instanceof EnderMan) {
             addSpecies(eligible, new WeightedPower(EffectReg.LASER_EYES_BASIC, 8, 0, 0));
-            addSpecies(eligible, new WeightedPower(EffectReg.LASER_EYES_ADVANCED, 2, 0, 0)); // rare — purple Homelander enderman
+            addSpecies(eligible, new WeightedPower(EffectReg.LASER_EYES_ADVANCED, 2, 0, 0)); // rare - purple Homelander enderman
             addSpecies(eligible, new WeightedPower(EffectReg.SPEEDSTER, 4, 0, 3));
         }
 
@@ -541,7 +562,7 @@ public class MobPowerManager {
             addSpecies(eligible, new WeightedPower(EffectReg.MAGNETISM, 1, 0, 0));
             addSpecies(eligible, new WeightedPower(EffectReg.CREATIVE_FLIGHT, 2, 0, 0)); // +2 on top of general pool's 1
             addSpecies(eligible, new WeightedPower(EffectReg.LEAP, 3, 0, 0));            // common hostile leap
-            addSpecies(eligible, new WeightedPower(EffectReg.EXPLOSIVE, 1, 0, 0));        // rare — mob survives its own blast
+            addSpecies(eligible, new WeightedPower(EffectReg.EXPLOSIVE, 1, 0, 0));        // rare - mob survives its own blast
             if (Config.weightChestBlast > 0) {
                 addSpecies(eligible, new WeightedPower(EffectReg.CHEST_BLAST, Config.mobChestBlastWeight, 0, 0));
             }
@@ -556,33 +577,21 @@ public class MobPowerManager {
     }
 
     /**
-     * Applies config-based power toggle filters to a power pool.
+     * Removes species-pool powers whose mob gate weight is 0. Universal-pool powers are already
+     * gated by their own mobWeight in addUniversal (weight 0 = not added), so only the
+     * species-only powers need a gate here.
      */
     private static List<WeightedPower> applyMobPowerFilter(List<WeightedPower> eligible) {
         eligible.removeIf(wp -> {
-            if (wp.power() == EffectReg.SPEEDSTER && !Config.mobPowerSpeedster) return true;
-            if (wp.power() == EffectReg.DEEP && !Config.mobPowerDeep) return true;
-            if (wp.power() == EffectReg.TELEPORT && !Config.mobPowerTeleport) return true;
-            if (wp.power() == EffectReg.ATOM_CHARGING && !Config.mobPowerAtomCharging) return true;
-            if (wp.power() == EffectReg.INVISIBILITY && !Config.mobPowerInvisibility) return true;
-            if (wp.power() == EffectReg.INVINCIBLE && !Config.mobPowerInvincible) return true;
-            if (wp.power() == EffectReg.LASER_EYES_BASIC && !Config.mobPowerLaserBasic) return true;
-            if (wp.power() == EffectReg.LASER_EYES_ADVANCED && !Config.mobPowerLaserAdvanced) return true;
-            if (wp.power() == EffectReg.ENHANCED_REGEN && !Config.mobPowerEnhancedRegen) return true;
-            if (wp.power() == EffectReg.BERSERKER && !Config.mobPowerBerserker) return true;
-            if (wp.power() == EffectReg.PROJECTILE_IMMUNITY && !Config.mobPowerProjectileImmunity) return true;
-            if (wp.power() == EffectReg.MAGNETISM && !Config.mobPowerMagnetism) return true;
-            if (wp.power() == EffectReg.SHRINK && !Config.mobPowerShrink) return true;
-            if (wp.power() == EffectReg.ENLARGE && !Config.mobPowerEnlarge) return true;
-            if (wp.power() == EffectReg.CREATIVE_FLIGHT && !Config.mobPowerCreativeFlight) return true;
-            if (wp.power() == EffectReg.CHEST_BLAST && !Config.mobPowerChestBlast) return true;
-            if (wp.power() == EffectReg.LEAP && !Config.mobPowerLeap) return true;
-            if (wp.power() == EffectReg.EXPLOSIVE && !Config.mobPowerExplosive) return true;
-            if (wp.power() == EffectReg.HEALING && !Config.mobPowerHealing) return true;
-            if (wp.power() == EffectReg.FORCEFIELD && !Config.mobPowerForcefield) return true;
-            if (wp.power() == EffectReg.PYROKINESIS && !Config.mobPowerPyrokinesis) return true;
-            if (wp.power() == EffectReg.CRYOKINESIS && !Config.mobPowerCryokinesis) return true;
-            if (wp.power() == EffectReg.LIFESTEAL && !Config.mobPowerLifesteal) return true;
+            if (wp.power() == EffectReg.DEEP && Config.mobWeightDeep <= 0) return true;
+            if (wp.power() == EffectReg.BERSERKER && Config.mobWeightBerserker <= 0) return true;
+            if (wp.power() == EffectReg.INVINCIBLE && Config.mobWeightInvincible <= 0) return true;
+            if (wp.power() == EffectReg.ATOM_CHARGING && Config.mobWeightAtomCharging <= 0) return true;
+            if (wp.power() == EffectReg.MAGNETISM && Config.mobWeightMagnetism <= 0) return true;
+            if (wp.power() == EffectReg.LASER_EYES_ADVANCED && Config.mobWeightLaserAdvanced <= 0) return true;
+            if (wp.power() == EffectReg.CHEST_BLAST && Config.mobWeightChestBlast <= 0) return true;
+            if (wp.power() == EffectReg.EXPLOSIVE && Config.mobWeightExplosive <= 0) return true;
+            if (wp.power() == EffectReg.FORCEFIELD && Config.mobWeightForcefield <= 0) return true;
             return false;
         });
         return eligible;
@@ -599,7 +608,7 @@ public class MobPowerManager {
     public static void onMobTick(Mob mob, ServerLevel level) {
         // Quick bail: only process powered mobs. A mob is "powered" if it carries the
         // tag from natural injection, OR if it simply has any CompoundV effect applied
-        // some other way (e.g. via the /effect command) — in that case, lazily mark it
+        // some other way (e.g. via the /effect command) - in that case, lazily mark it
         // powered and do the one-time setup so command-applied powers are functional
         // and show the blue particles just like injected ones.
         if (!mob.getPersistentData().getBoolean(POWERED_TAG)) {
@@ -612,7 +621,8 @@ public class MobPowerManager {
         if (!mob.isAlive()) {
             // Reset Pehkui scale if this mob had shrink/enlarge
             if (ModList.get().isLoaded("pehkui")
-                    && (mob.hasEffect(EffectReg.SHRINK.get()) || mob.hasEffect(EffectReg.ENLARGE.get()))) {
+                    && (mob.hasEffect(EffectReg.SHRINK.get()) || mob.hasEffect(EffectReg.ENLARGE.get())
+                        || mob.hasEffect(EffectReg.SIZE_CONTROL_ADVANCED.get()))) {
                 PehkuiHelper.resetScale(mob);
             }
             // Restore gravity if this mob was flying
@@ -687,6 +697,12 @@ public class MobPowerManager {
             tickMobShrink(mob, target, level);
         }
 
+        // Advanced Size Control: adaptively pick small / normal / large to fit the situation -
+        // small to ambush or escape, large for damaging attacks, normal for a low profile.
+        if (mob.hasEffect(EffectReg.SIZE_CONTROL_ADVANCED.get()) && ModList.get().isLoaded("pehkui")) {
+            tickMobAdvancedSize(mob, target, level);
+        }
+
         // Berserker: red particle aura that intensifies as health drops
         if (mob.hasEffect(EffectReg.BERSERKER.get())) {
             float missingPercent = 1.0f - (mob.getHealth() / mob.getMaxHealth());
@@ -754,7 +770,7 @@ public class MobPowerManager {
         Vec3 lookVec = target.getViewVector(1.0F).normalize();
         Vec3 toMob = mob.getEyePosition().subtract(target.getEyePosition()).normalize();
         double dot = lookVec.dot(toMob);
-        // cos(15°) ≈ 0.966 — if dot product exceeds this, target is staring at the mob
+        // cos(15°) ≈ 0.966 - if dot product exceeds this, target is staring at the mob
         return dot > 0.966;
     }
 
@@ -765,7 +781,7 @@ public class MobPowerManager {
     /**
      * Fires a laser beam from the mob toward its attack target.
      * Reduced damage and range compared to player version. No block
-     * destruction or fire — just a damaging beam with particle trail.
+     * destruction or fire - just a damaging beam with particle trail.
      */
     private static void tickMobLaser(Mob mob, LivingEntity target, ServerLevel level, boolean advanced) {
         // Burst/cooldown cycle: charge for ~1 sec, fire for ~3 sec, rest for ~6 sec
@@ -837,7 +853,7 @@ public class MobPowerManager {
         if (blockHit.getType() == HitResult.Type.BLOCK) {
             double blockDist = eyePos.distanceTo(blockHit.getLocation());
             if (blockDist < dist - 0.5) {
-                // Blocked by terrain — beam hits wall instead
+                // Blocked by terrain - beam hits wall instead
                 endPos = blockHit.getLocation();
                 level.sendParticles(ParticleTypes.FLAME,
                         endPos.x, endPos.y, endPos.z, 2, 0.1, 0.1, 0.1, 0.01);
@@ -851,9 +867,9 @@ public class MobPowerManager {
             Vec3 targetLook = target.getViewVector(1.0F).normalize();
             Vec3 toMob = mob.getEyePosition().subtract(target.getEyePosition()).normalize();
             double dot = targetLook.dot(toMob);
-            // cos(60°) = 0.5 — shield blocks if target is roughly facing the mob
+            // cos(60°) = 0.5 - shield blocks if target is roughly facing the mob
             if (dot > 0.5) {
-                // Deflect — sparks off the shield, no damage
+                // Deflect - sparks off the shield, no damage
                 Vec3 shieldPos = target.getEyePosition().add(targetLook.scale(0.5));
                 level.sendParticles(ParticleTypes.CRIT,
                         shieldPos.x, shieldPos.y, shieldPos.z,
@@ -870,7 +886,8 @@ public class MobPowerManager {
         // Damage the target (no knockback)
         Vec3 motionBefore = target.getDeltaMovement();
         target.invulnerableTime = 0;
-        target.hurt(mob.damageSources().mobAttack(mob), damage);
+        // Indirect-magic source so the mob Strength multiplier can't amplify laser damage.
+        target.hurt(mob.damageSources().indirectMagic(mob, mob), damage);
         target.setDeltaMovement(motionBefore);
         target.hurtMarked = true;
 
@@ -961,7 +978,7 @@ public class MobPowerManager {
 
     /**
      * Randomly teleports the mob to a position near its target.
-     * Creates an unpredictable combat encounter — the mob appears from
+     * Creates an unpredictable combat encounter - the mob appears from
      * different angles, forcing the player to stay alert.
      */
     private static void tickMobTeleport(Mob mob, LivingEntity target, ServerLevel level) {
@@ -1011,13 +1028,13 @@ public class MobPowerManager {
                 }
             }
         }
-        // Failed to find a spot — silently give up this tick
+        // Failed to find a spot - silently give up this tick
     }
 
     /**
      * Defensive teleport for passive/neutral mobs when damaged.
      * Teleports 8-16 blocks away from the attacker. Called from ForgeEvents on hurt.
-     * 50% chance per hit — not guaranteed, so the mob doesn't become unkillable.
+     * 50% chance per hit - not guaranteed, so the mob doesn't become unkillable.
      */
     public static void defensiveTeleport(Mob mob, LivingEntity attacker, ServerLevel level) {
         if (mob.getRandom().nextFloat() > 0.5f) return;
@@ -1163,7 +1180,7 @@ public class MobPowerManager {
         // === Low health retreat ===
         if (healthPercent <= 0.2f) {
             if (!retreating) {
-                // Initial retreat — shrink, flee, mark retreating
+                // Initial retreat - shrink, flee, mark retreating
                 mob.getPersistentData().putBoolean(SHRINK_RETREATING_TAG, true);
                 if (currentScale > MOB_SHRINK_SCALE + 0.1f) {
                     PehkuiHelper.setScale(mob, MOB_SHRINK_SCALE);
@@ -1206,7 +1223,7 @@ public class MobPowerManager {
         if (aggroed && stealthMode && currentScale < 0.9f) {
             double dist = mob.distanceTo(target);
             if (dist <= STEALTH_POP_RANGE) {
-                // Close enough — pop to full size for the ambush!
+                // Close enough - pop to full size for the ambush!
                 PehkuiHelper.resetScale(mob);
                 mob.getPersistentData().putBoolean(SHRINK_STEALTH_TAG, false);
 
@@ -1219,7 +1236,7 @@ public class MobPowerManager {
                 level.playSound(null, mob.getX(), mob.getY(), mob.getZ(),
                         SoundEvents.PISTON_EXTEND, SoundSource.HOSTILE, 0.5F, 1.2F);
             }
-            // Otherwise stay small — the speed boost makes them zip toward the target
+            // Otherwise stay small - the speed boost makes them zip toward the target
             return;
         }
 
@@ -1246,6 +1263,83 @@ public class MobPowerManager {
     }
 
     // =====================================================================
+    //  MOB ADVANCED SIZE CONTROL (adaptive)
+    // =====================================================================
+
+    /**
+     * Adaptive size AI for mobs with Advanced Size Control. The mob fine-tunes its scale to the
+     * tactical situation rather than locking to one size:
+     *
+     *   - LOW HEALTH (<=25%): shrink small to ESCAPE - harder to hit, faster, low profile.
+     *   - AGGROED + IN MELEE RANGE + healthy: grow LARGE for damaging attacks.
+     *   - AGGROED + APPROACHING (out of range): shrink small to AMBUSH - slip in fast and low
+     *     until close enough to commit.
+     *   - NO TARGET / CALM: return to NORMAL size (low profile, neutral).
+     *
+     * Always checks for space before growing so it doesn't get stuck in blocks.
+     */
+    private static void tickMobAdvancedSize(Mob mob, LivingEntity target, ServerLevel level) {
+        if (mob.tickCount % 10 != 0) return; // re-evaluate every half second
+
+        float currentScale = PehkuiHelper.getTargetScale(mob);
+        boolean aggroed = target != null && target.isAlive();
+        float healthPercent = mob.getHealth() / mob.getMaxHealth();
+
+        // Decide the desired size for the current situation.
+        float desired;
+        if (aggroed && healthPercent <= 0.25f) {
+            desired = MOB_SHRINK_SCALE;          // escaping - tiny and evasive
+        } else if (aggroed) {
+            double dist = mob.distanceTo(target);
+            double meleeRange = mob.getBbWidth() + 2.5; // "in range to commit to an attack"
+            if (dist <= meleeRange) {
+                desired = MOB_ENLARGE_SCALE;     // committing to a hit - big and threatening
+            } else {
+                desired = MOB_SHRINK_SCALE;      // closing the gap - small ambush approach
+            }
+        } else {
+            desired = 1.0f;                      // calm - normal, low profile
+        }
+
+        if (Math.abs(currentScale - desired) < 0.1f) return; // already about right
+
+        // Growing needs a space check so we don't clip into terrain.
+        if (desired > currentScale) {
+            float w = mob.getBbWidth() * desired;
+            float h = mob.getBbHeight() * desired;
+            double halfW = w * 0.5;
+            AABB box = new AABB(
+                    mob.getX() - halfW, mob.getY(), mob.getZ() - halfW,
+                    mob.getX() + halfW, mob.getY() + h, mob.getZ() + halfW);
+            if (!level.noCollision(mob, box)) return; // no room to grow right now
+        }
+
+        applyAdaptiveScale(mob, level, desired);
+    }
+
+    /** Apply a scale change with size-appropriate particles/sound. */
+    private static void applyAdaptiveScale(Mob mob, ServerLevel level, float desired) {
+        if (Math.abs(desired - 1.0f) < 0.05f) {
+            PehkuiHelper.resetScale(mob);
+        } else {
+            PehkuiHelper.setScale(mob, desired);
+        }
+        if (desired > 1.1f) {
+            level.sendParticles(ParticleTypes.CLOUD,
+                    mob.getX(), mob.getY() + mob.getBbHeight() * 0.5, mob.getZ(),
+                    10, 0.5, 0.5, 0.5, 0.05);
+            level.playSound(null, mob.getX(), mob.getY(), mob.getZ(),
+                    SoundEvents.IRON_GOLEM_REPAIR, SoundSource.HOSTILE, 0.5F, 0.5F);
+        } else {
+            level.sendParticles(ParticleTypes.POOF,
+                    mob.getX(), mob.getY() + 0.4, mob.getZ(),
+                    8, 0.3, 0.3, 0.3, 0.03);
+            level.playSound(null, mob.getX(), mob.getY(), mob.getZ(),
+                    SoundEvents.PISTON_CONTRACT, SoundSource.HOSTILE, 0.4F, 1.6F);
+        }
+    }
+
+    // =====================================================================
     //  MOB CREATIVE FLIGHT (experimental)
     // =====================================================================
 
@@ -1263,7 +1357,7 @@ public class MobPowerManager {
     private static void tickMobFlight(Mob mob, LivingEntity target, ServerLevel level) {
         boolean aggroed = target != null && target.isAlive();
 
-        // Ground cooldown — mob stays grounded for a few seconds after a dive attack
+        // Ground cooldown - mob stays grounded for a few seconds after a dive attack
         if (mob.getPersistentData().contains(FLIGHT_GROUND_UNTIL_TAG)) {
             long groundUntil = mob.getPersistentData().getLong(FLIGHT_GROUND_UNTIL_TAG);
             if (level.getGameTime() < groundUntil) {
@@ -1304,7 +1398,7 @@ public class MobPowerManager {
 
             if (flightMode == 2) {
                 // === Turret mode: rise straight up above current position, hover, laser ===
-                // Rise to turret height above the TARGET (not self) — tracks horizontally
+                // Rise to turret height above the TARGET (not self) - tracks horizontally
                 targetPos = target.position().add(0, MOB_FLIGHT_TURRET_HEIGHT, 0);
 
                 turretTimer++;
@@ -1354,7 +1448,7 @@ public class MobPowerManager {
                 double dist = mob.position().distanceTo(target.position());
 
                 if (dist < 3.0) {
-                    // Close enough — exit flight, let normal melee AI take over
+                    // Close enough - exit flight, let normal melee AI take over
                     mob.setNoGravity(false);
                     mob.getPersistentData().remove(FLIGHT_MODE_TAG);
                     mob.getPersistentData().remove(FLIGHT_TURRET_TIMER_TAG);
@@ -1391,7 +1485,7 @@ public class MobPowerManager {
                 mob.setDeltaMovement(dir.x * speed, dir.y * speed, dir.z * speed);
                 mob.hurtMarked = true;
             } else if (flightMode == 2) {
-                // Hovering in place — slight drift for visual interest
+                // Hovering in place - slight drift for visual interest
                 mob.setDeltaMovement(0, Math.sin(mob.tickCount * 0.05) * 0.02, 0);
                 mob.hurtMarked = true;
             }
@@ -1411,7 +1505,7 @@ public class MobPowerManager {
                         2, 0.2, 0.1, 0.2, 0.01);
             }
         } else {
-            // De-aggroed — restore gravity, clear flight mode for re-roll
+            // De-aggroed - restore gravity, clear flight mode for re-roll
             if (mob.isNoGravity()) {
                 mob.setNoGravity(false);
             }
@@ -1438,7 +1532,7 @@ public class MobPowerManager {
      * - 20 second cooldown
      *
      * Compared to the player version: shorter range, less damage, no power stripping,
-     * no block breaking. Still very dangerous — deals continuous beam damage.
+     * no block breaking. Still very dangerous - deals continuous beam damage.
      *
      * Easy to de-implement: remove this method, the tick call in onMobTick,
      * the pool entry, the tracking map, and the config options.
@@ -1477,7 +1571,7 @@ public class MobPowerManager {
         if (inChargeUp) {
             float chargePercent = (float) timer / MOB_CHEST_BLAST_CHARGEUP;
 
-            // Freeze mob once charge is past 50% — planting feet for the blast
+            // Freeze mob once charge is past 50% - planting feet for the blast
             if (chargePercent > 0.5f) {
                 mob.getNavigation().stop();
                 mob.setDeltaMovement(0, mob.onGround() ? 0 : mob.getDeltaMovement().y, 0);
@@ -1523,7 +1617,7 @@ public class MobPowerManager {
             return;
         }
 
-        // === Blast phase — continues even if target dies ===
+        // === Blast phase - continues even if target dies ===
         if (inBlast) {
             // Freeze mob in place while blasting
             mob.getNavigation().stop();
@@ -1538,7 +1632,7 @@ public class MobPowerManager {
                 Vec3 targetCenter = target.position().add(0, target.getBbHeight() * 0.5, 0);
                 desiredDir = targetCenter.subtract(mobChest).normalize();
             } else {
-                // Target dead — hold current beam direction
+                // Target dead - hold current beam direction
                 float yawRad = (float) Math.toRadians(mob.getYRot());
                 float pitchRad = (float) Math.toRadians(mob.getXRot());
                 desiredDir = new Vec3(
@@ -1547,7 +1641,7 @@ public class MobPowerManager {
                         Math.cos(yawRad) * Math.cos(pitchRad)).normalize();
             }
 
-            // Limit turn speed — beam can only rotate a few degrees per tick
+            // Limit turn speed - beam can only rotate a few degrees per tick
             Vec3 currentDir = mobChestBlastDir.get(uuid);
             if (currentDir == null) {
                 currentDir = desiredDir; // first tick: snap to target
@@ -1558,7 +1652,7 @@ public class MobPowerManager {
 
             Vec3 dir;
             if (angleBetween <= maxAngle || angleBetween < 0.001) {
-                // Close enough or within turn budget — use desired direction
+                // Close enough or within turn budget - use desired direction
                 dir = desiredDir;
             } else {
                 // Interpolate toward desired direction at max turn speed
@@ -1571,7 +1665,7 @@ public class MobPowerManager {
             }
             mobChestBlastDir.put(uuid, dir);
 
-            // Apply aim inaccuracy — deviate up to configured degrees from perfect aim
+            // Apply aim inaccuracy - deviate up to configured degrees from perfect aim
             double inaccuracy = Config.mobChestBlastInaccuracy;
             if (inaccuracy > 0) {
                 double inaccuracyRad = Math.toRadians(inaccuracy);
@@ -1591,7 +1685,7 @@ public class MobPowerManager {
                 dir = new Vec3(newX, newY, newZ).normalize();
             }
 
-            // Raycast against blocks — beam stops at walls
+            // Raycast against blocks - beam stops at walls
             Vec3 beamEnd = mobChest.add(dir.scale(MOB_CHEST_BLAST_RANGE));
             BlockHitResult blockHit = level.clip(new ClipContext(
                     mobChest, beamEnd, ClipContext.Block.COLLIDER, ClipContext.Fluid.NONE, mob));
@@ -1607,7 +1701,7 @@ public class MobPowerManager {
 
             PacketHandler.sendToTrackingAndSelf(
                     new S2CLaserSyncPacket(mob.getId(), hitPos.x, hitPos.y, hitPos.z,
-                            S2CLaserSyncPacket.COLOR_CHEST_BLAST),
+                            getMobChestBlastColor(mob)),
                     mob);
 
             level.sendParticles(MOB_BLAST_CORE,
@@ -1630,7 +1724,7 @@ public class MobPowerManager {
                 beamTarget.invulnerableTime = 0;
                 float dmg = MOB_CHEST_BLAST_DAMAGE;
                 if (beamTarget instanceof Player) dmg *= 0.5f;
-                beamTarget.hurt(mob.damageSources().mobAttack(mob), dmg);
+                beamTarget.hurt(mob.damageSources().indirectMagic(mob, mob), dmg);
 
                 // Optional power stripping
                 if (Config.mobChestBlastStripsPowers) {
@@ -1678,7 +1772,7 @@ public class MobPowerManager {
 
     /**
      * Mob leaps toward target when they're far away. 5 second cooldown.
-     * Falls naturally — fall damage immunity handled by ForgeEvents.
+     * Falls naturally - fall damage immunity handled by ForgeEvents.
      */
     private static void tickMobLeap(Mob mob, LivingEntity target, ServerLevel level) {
         if (target == null || !target.isAlive()) return;
@@ -1712,9 +1806,9 @@ public class MobPowerManager {
     }
 
     /**
-     * Spider mob behavior — a predatory web-slinger:
+     * Spider mob behavior - a predatory web-slinger:
      *  - Web-yank: at mid range, fires a webbing strand that DRAGS the target toward the mob
-     *    (the opposite of the player's reel) and roots it briefly with slowness — catching prey.
+     *    (the opposite of the player's reel) and roots it briefly with slowness - catching prey.
      *  - Lunge: across larger gaps it springs toward the target (no fall damage), traversing
      *    terrain a normal mob couldn't.
      *  - Sidestep: when a projectile is incoming, it darts sideways (spider-sense reflex).
@@ -1756,14 +1850,14 @@ public class MobPowerManager {
         double reengageDist = 11.0;
         if (disengaged) {
             if (dist >= reengageDist) {
-                mobSpiderDisengaged.put(id, false); // target got away — allowed to web again
+                mobSpiderDisengaged.put(id, false); // target got away - allowed to web again
             }
             // While disengaged, don't web-shot; fall through to melee/trap behavior.
         }
 
         // --- Web-shot: fire a web projectile that the target can DODGE. The yank + root only
         // land if the projectile actually hits (handled in WebProjectileEntity#onHitEntity),
-        // so there's travel time and the attack is reactable — not an instant grab.
+        // so there's travel time and the attack is reactable - not an instant grab.
         if (!disengaged && dist > 4.5 && dist < 28.0 && now >= mobSpiderWebCooldown.getOrDefault(id, 0L)) {
             blueduck.compound_v.entity.WebProjectileEntity web =
                     new blueduck.compound_v.entity.WebProjectileEntity(level, mob);
@@ -1792,7 +1886,7 @@ public class MobPowerManager {
         // themselves. Gated by a long cooldown plus a random chance so it's an occasional
         // surprise, not a constant lockdown.
         if (dist < 6.0 && now >= mobSpiderTrapCooldown.getOrDefault(id, 0L)
-                && mob.getRandom().nextFloat() < 0.12f) {
+                && mob.getRandom().nextFloat() < (float) blueduck.compound_v.Config.spiderMobWebTrapChance) {
             net.minecraft.core.BlockPos center = target.blockPosition();
             int placed = 0;
             for (int dx = -1; dx <= 1; dx++) {
@@ -1813,7 +1907,7 @@ public class MobPowerManager {
                 level.playSound(null, target.getX(), target.getY(), target.getZ(),
                         SoundEvents.SLIME_BLOCK_PLACE, SoundSource.HOSTILE, 0.9F, 0.7F);
             }
-            mobSpiderTrapCooldown.put(id, now + 500); // ~25s between trap attempts
+            mobSpiderTrapCooldown.put(id, now + blueduck.compound_v.Config.spiderMobWebTrapCooldown);
         }
     }
 
@@ -2018,7 +2112,7 @@ public class MobPowerManager {
         }
     }
 
-    /** Mob flame wave — radial ignite + damage. Honors the friendly-fire config. */
+    /** Mob flame wave - radial ignite + damage. Honors the friendly-fire config. */
     private static void mobFlameWave(Mob mob, ServerLevel level) {
         double radius = Config.pyroFlameWaveRadius;
         float peak = (float) Config.pyroFlameWaveDamage;
@@ -2050,7 +2144,7 @@ public class MobPowerManager {
         }
     }
 
-    /** Mob frost aura — slow + freeze nearby. Honors the friendly-fire config. */
+    /** Mob frost aura - slow + freeze nearby. Honors the friendly-fire config. */
     private static void mobFrostAura(Mob mob, ServerLevel level) {
         double radius = Config.cryoAuraRadius;
         AABB box = mob.getBoundingBox().inflate(radius);

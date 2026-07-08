@@ -21,6 +21,9 @@ public class CreativeFlightEffect extends CompoundVEffect {
     }
 
     @Override
+    public boolean canFly() { return true; }
+
+    @Override
     public void applyEffectTick(LivingEntity entity, int amplifier) {
         super.applyEffectTick(entity, amplifier);
         if (CompoundVEffect.arePowersSuppressed(entity)) return;

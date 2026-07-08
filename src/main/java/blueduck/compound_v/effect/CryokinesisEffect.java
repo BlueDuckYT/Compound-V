@@ -291,6 +291,15 @@ public class CryokinesisEffect extends CompoundVEffect {
     }
 
     @Override
+    public void clearSecondaryEffects(LivingEntity entity) {
+        if (entity instanceof Player player) {
+            removeSelfSlow(player);
+            CryoState s = stateMap.get(entity.getUUID());
+            if (s != null) s.auraActive = false;
+        }
+    }
+
+    @Override
     public boolean isDurationEffectTick(int tick, int amplifier) {
         return true;
     }

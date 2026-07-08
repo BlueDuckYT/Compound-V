@@ -53,6 +53,7 @@ public class EffectReg {
     public static final RegistryObject<MobEffect> HEAD_POP = EFFECTS.register("head_pop", () -> new HeadPopEffect(MobEffectCategory.BENEFICIAL));
     public static final RegistryObject<MobEffect> ENHANCED_REGEN = EFFECTS.register("enhanced_regen", () -> new EnhancedRegenEffect(MobEffectCategory.BENEFICIAL));
     public static final RegistryObject<MobEffect> DENSITY = EFFECTS.register("density", () -> new DensityEffect(MobEffectCategory.BENEFICIAL));
+    public static final RegistryObject<MobEffect> SLIME = EFFECTS.register("slime", () -> new SlimeEffect(MobEffectCategory.BENEFICIAL));
     public static final RegistryObject<MobEffect> SPIDER = EFFECTS.register("spider", () -> new SpiderEffect(MobEffectCategory.BENEFICIAL));
     public static final RegistryObject<MobEffect> INSTAKILL = EFFECTS.register("instakill", () -> new InstakillEffect(MobEffectCategory.BENEFICIAL));
     public static final RegistryObject<MobEffect> MIND_CONTROL = EFFECTS.register("mind_control", () -> new MindControlEffect(MobEffectCategory.BENEFICIAL));
@@ -117,22 +118,23 @@ public class EffectReg {
         CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(HEAD_POP.get(), 3), Config.weightHeadPop);
         CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(ENHANCED_REGEN.get(), 1), Config.weightEnhancedRegen);
         CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(DENSITY.get(), 1), Config.weightDensity);
-        // Spider power — now a real pool entry (A tier).
+        CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(SLIME.get(), 1), Config.weightSlime);
+        // Spider power - now a real pool entry (A tier).
         CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(SPIDER.get(), 1), Config.weightSpider);
         CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(MIND_CONTROL.get(), 1), Config.weightMindControl);
         CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(INSTAKILL.get(), 1), Config.weightInstakill);
         CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(BERSERKER.get(), 1), Config.weightBerserker);
         CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(PROJECTILE_IMMUNITY.get(), 1), Config.weightProjectileImmunity);
-        // Star Power — experimental
+        // Star Power - experimental
          CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(STAR_POWER.get(), 1), Config.weightStarPower);
-        // Chest Blast — V1-exclusive by default (regular weight 0); set weight_chest_blast > 0 to allow in regular V.
+        // Chest Blast - V1-exclusive by default (regular weight 0); set weight_chest_blast > 0 to allow in regular V.
         CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(CHEST_BLAST.get(), 1), Config.weightChestBlast);
         CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(LEAP.get(), 1), Config.weightLeap);
         CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(EXPLOSIVE.get(), 1), Config.weightExplosive);
         CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(HEALING.get(), 1), Config.weightHealing);
         CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(MIMIC.get(), 1), Config.weightMimic);
         CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(PETRIFYING_GAZE.get(), 1), Config.weightPetrifyingGaze);
-        // Stormfront — V1-exclusive by default (regular weight 0); set weight_stormfront > 0 to allow in regular V.
+        // Stormfront - V1-exclusive by default (regular weight 0); set weight_stormfront > 0 to allow in regular V.
         CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(STORMFRONT.get(), 1), Config.weightStormfront);
         CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(FORCEFIELD.get(), 1), Config.weightForcefield);
         CompoundVEffectMatrix.addEffect(new CompoundVEffectGiver(NULLIFY.get(), 1), Config.weightNullify);
@@ -183,7 +185,7 @@ public class EffectReg {
             CompoundVEffectMatrix.addMobEffect(new CompoundVEffectGiver(ENLARGE.get(), 1), Config.weightEnlarge);
         }
 
-        // === V1 pool — full roster, configurable (0 = excluded) ===
+        // === V1 pool - full roster, configurable (0 = excluded) ===
         if (Config.v1WeightAimlock > 0)
             CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(AIMLOCK.get(), 1), Config.v1WeightAimlock);
         if (Config.v1WeightAtomCharging > 0)
@@ -200,6 +202,7 @@ public class EffectReg {
             CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(DEEP.get(), 1), Config.v1WeightDeep);
         if (Config.v1WeightDensity > 0)
             CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(DENSITY.get(), 1), Config.v1WeightDensity);
+            CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(SLIME.get(), 1), Config.v1WeightSlime);
         if (Config.v1WeightEnhancedRegen > 0)
             CompoundVEffectMatrix.addV1Effect(new CompoundVEffectGiver(ENHANCED_REGEN.get(), 1), Config.v1WeightEnhancedRegen);
         if (Config.v1WeightEnlarge > 0 && ModList.get().isLoaded("pehkui"))

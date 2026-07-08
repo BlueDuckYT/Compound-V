@@ -229,7 +229,7 @@ public class StarPowerEffect extends CompoundVEffect {
 
             // Kill with extreme damage
             target.invulnerableTime = 0;
-            target.hurt(player.damageSources().playerAttack(player), Float.MAX_VALUE);
+            CompoundVEffect.powerHurt(target, player.damageSources().playerAttack(player), Float.MAX_VALUE);
 
             // Death burst — rainbow explosion at kill site
             for (DustParticleOptions color : RAINBOW) {

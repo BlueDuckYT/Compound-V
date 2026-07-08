@@ -27,6 +27,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public class DensityEffect extends CompoundVEffect {
 
     private static final Set<UUID> denseActive = new HashSet<>();
+    // Persisted (NBT) toggle flag, so dense state survives death and dimension changes.
+    private static final String DENSE_ON_TAG = "compound_v_dense_on";
     private static final Set<UUID> wasInAir = new HashSet<>();
     private static final Map<UUID, Double> fallStartY = new ConcurrentHashMap<>();
 
@@ -44,12 +46,19 @@ public class DensityEffect extends CompoundVEffect {
     }
 
     @Override
+    public void clearSecondaryEffects(LivingEntity entity) {
+        denseActive.remove(entity.getUUID());
+        entity.removeEffect(MobEffects.MOVEMENT_SLOWDOWN);
+    }
+
+    @Override
     public void activate(ServerPlayer player, int amplifier, ServerLevel level) {
         super.activate(player, amplifier, level);
         UUID uuid = player.getUUID();
 
         if (denseActive.contains(uuid)) {
             denseActive.remove(uuid);
+            player.getPersistentData().putBoolean(DENSE_ON_TAG, false);
             player.removeEffect(MobEffects.MOVEMENT_SLOWDOWN);
             level.sendParticles(ParticleTypes.CLOUD,
                     player.getX(), player.getY() + 1.0, player.getZ(),
@@ -58,6 +67,7 @@ public class DensityEffect extends CompoundVEffect {
                     SoundEvents.IRON_GOLEM_REPAIR, SoundSource.PLAYERS, 0.5F, 1.5F);
         } else {
             denseActive.add(uuid);
+            player.getPersistentData().putBoolean(DENSE_ON_TAG, true);
             level.sendParticles(ParticleTypes.CRIT,
                     player.getX(), player.getY() + 0.5, player.getZ(),
                     15, 0.3, 0.3, 0.3, 0.1);
@@ -76,6 +86,13 @@ public class DensityEffect extends CompoundVEffect {
         ServerLevel level = player.serverLevel();
         UUID uuid = player.getUUID();
 
+        // The in-memory active set is cleared when the player is recreated (death, dimension
+        // change), but the persisted effect and the NBT toggle flag survive. Re-sync the active
+        // set from the flag so the dense state isn't lost across those events.
+        if (!denseActive.contains(uuid) && player.getPersistentData().getBoolean(DENSE_ON_TAG)) {
+            denseActive.add(uuid);
+        }
+
         if (!denseActive.contains(uuid)) {
             wasInAir.remove(uuid);
             fallStartY.remove(uuid);
@@ -85,7 +102,7 @@ public class DensityEffect extends CompoundVEffect {
         if (player.isInWater()) {
             Vec3 motion = player.getDeltaMovement();
 
-            // Prevent swimming entirely — you're too heavy
+            // Prevent swimming entirely - you're too heavy
             player.setSwimming(false);
             player.setSprinting(false);
 
@@ -99,7 +116,7 @@ public class DensityEffect extends CompoundVEffect {
             }
             newY = Math.max(newY, maxSinkSpeed);
 
-            // Heavily dampen horizontal movement — walking on the bottom, not swimming
+            // Heavily dampen horizontal movement - walking on the bottom, not swimming
             player.setDeltaMovement(motion.x * 0.7, newY, motion.z * 0.7);
             player.hurtMarked = true;
 
@@ -151,7 +168,7 @@ public class DensityEffect extends CompoundVEffect {
 
                         float falloff = 1.0f - (float) (dist / stompRange) * 0.6f;
                         target.invulnerableTime = 0;
-                        target.hurt(player.damageSources().playerAttack(player), stompDamage * falloff);
+                        CompoundVEffect.powerHurt(target, player.damageSources().playerAttack(player), stompDamage * falloff);
 
                         Vec3 knockDir = target.position().subtract(player.position()).normalize();
                         target.push(knockDir.x * 0.5, 0.3 + fallDist * 0.05, knockDir.z * 0.5);
@@ -217,6 +234,6 @@ public class DensityEffect extends CompoundVEffect {
 
     @Override
     public double getStrengthMultiplier(int amplifier) {
-        return super.getStrengthMultiplier(amplifier) * 1.5; // 50% more damage — heavy hitter
+        return super.getStrengthMultiplier(amplifier) * 1.5; // 50% more damage - heavy hitter
     }
 }

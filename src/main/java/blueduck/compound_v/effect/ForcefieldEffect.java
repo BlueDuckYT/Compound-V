@@ -22,7 +22,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Forcefield — A Smash Bros. Ultimate-style toggleable shield.
+ * Forcefield - A Smash Bros. Ultimate-style toggleable shield.
  *
  * Players:
  * - Off (and non-rendering) until enabled. Toggle on/off at will with V.
@@ -38,7 +38,10 @@ import java.util.concurrent.ConcurrentHashMap;
  * - Cannot press V, so the shield is auto-maintained: it stays active whenever the
  *   mob has the power and is not suppressed, using the same HP / break / regen rules.
  *
- * Amplifier convention (players only): 0 = inactive (no render), 1 = active (render).
+ * Active state is tracked in a per-player statemap (fieldActive), not via the effect amplifier -
+ * consistent with Slime and Density. Render state (active + shield health) is broadcast to tracking
+ * clients and self via S2CForcefieldSyncPacket, since vanilla doesn't sync a player's effects to
+ * other clients.
  */
 public class ForcefieldEffect extends CompoundVEffect {
 
@@ -49,7 +52,8 @@ public class ForcefieldEffect extends CompoundVEffect {
     private static final Map<UUID, Long> toggleCooldownUntil = new ConcurrentHashMap<>();
     // Set true when the shield breaks; cleared once health recovers to the re-enable threshold.
     private static final Map<UUID, Boolean> brokenLockout = new ConcurrentHashMap<>();
-    private static final java.util.Set<UUID> currentlyToggling = ConcurrentHashMap.newKeySet();
+    // Game-time tick at which the shield last took a hit; regen pauses for a window after this.
+    private static final Map<UUID, Long> lastDamageTick = new ConcurrentHashMap<>();
 
     public ForcefieldEffect(MobEffectCategory category) {
         super(category);
@@ -60,7 +64,7 @@ public class ForcefieldEffect extends CompoundVEffect {
         return PowerType.ACTIVE;
     }
 
-    // No passive combat buffs — the shield IS the defense.
+    // No passive combat buffs - the shield IS the defense.
     @Override
     public double getStrengthMultiplier(int amplifier) {
         return 1.0;
@@ -72,6 +76,15 @@ public class ForcefieldEffect extends CompoundVEffect {
 
     private static float currentHp(UUID uuid) {
         return shieldHealth.computeIfAbsent(uuid, u -> maxHp());
+    }
+
+    /** True if regen is currently paused because the shield took a hit recently. */
+    private static boolean regenLocked(UUID uuid, net.minecraft.world.level.Level level) {
+        long lockTicks = Config.forcefieldRegenLockoutTicks;
+        if (lockTicks <= 0) return false;
+        Long last = lastDamageTick.get(uuid);
+        if (last == null) return false;
+        return level.getGameTime() - last < lockTicks;
     }
 
     // === Player toggle ===
@@ -88,13 +101,14 @@ public class ForcefieldEffect extends CompoundVEffect {
         float hp = currentHp(uuid);
 
         if (active) {
-            // Disable — health is preserved.
+            // Disable - health is preserved.
             fieldActive.put(uuid, false);
-            setAmplifier(player, 0);
             player.displayClientMessage(
                     net.minecraft.network.chat.Component.literal("\u00a77Forcefield: OFF"), true);
             level.playSound(null, player.getX(), player.getY(), player.getZ(),
                     SoundEvents.BEACON_DEACTIVATE, SoundSource.PLAYERS, 0.6F, 1.0F);
+            // Push the "off" state to trackers immediately so the bubble stops rendering.
+            broadcastState(player, false, currentHp(uuid));
         } else {
             // Locked out after a break until health recovers to the re-enable threshold.
             float reenableHp = maxHp() * (float) Config.forcefieldReenablePercent;
@@ -111,11 +125,11 @@ public class ForcefieldEffect extends CompoundVEffect {
             }
 
             fieldActive.put(uuid, true);
-            setAmplifier(player, 1);
             player.displayClientMessage(
                     net.minecraft.network.chat.Component.literal("\u00a7b\u00a7lForcefield: ON"), true);
             level.playSound(null, player.getX(), player.getY(), player.getZ(),
                     SoundEvents.BEACON_ACTIVATE, SoundSource.PLAYERS, 0.8F, 1.2F);
+            broadcastState(player, true, currentHp(uuid));
         }
     }
 
@@ -133,8 +147,8 @@ public class ForcefieldEffect extends CompoundVEffect {
         float max = maxHp();
         boolean active = fieldActive.getOrDefault(uuid, false);
 
-        // Passive regen — always, even when off.
-        if (hp < max) {
+        // Passive regen - always, even when off, but NOT for a window after taking a hit.
+        if (hp < max && !regenLocked(uuid, player.level())) {
             hp = Math.min(max, hp + (float) Config.forcefieldRegenPerTick);
             shieldHealth.put(uuid, hp);
         }
@@ -145,6 +159,16 @@ public class ForcefieldEffect extends CompoundVEffect {
             brokenLockout.put(uuid, false);
             player.displayClientMessage(
                     net.minecraft.network.chat.Component.literal("\u00a7aForcefield ready"), true);
+        }
+
+        // Sync render state to TRACKING clients (and self). Vanilla only syncs a player's own
+        // mob effects to that player, so without this the shield renders for nobody but the
+        // owner. Throttled to every 5 ticks; sends active flag + health fraction.
+        if (player.tickCount % 5 == 0) {
+            blueduck.compound_v.keybinds.PacketHandler.sendToTrackingAndSelf(
+                    new blueduck.compound_v.util.S2CForcefieldSyncPacket(
+                            player.getId(), active, max > 0 ? hp / max : 1.0f),
+                    player);
         }
 
         if (!active) return;
@@ -168,7 +192,7 @@ public class ForcefieldEffect extends CompoundVEffect {
         pushNearby(player, level, frac);
     }
 
-    // === Mob tick (auto-maintained) — called from MobPowerManager.onMobTick ===
+    // === Mob tick (auto-maintained) - called from MobPowerManager.onMobTick ===
 
     /**
      * Auto-maintains a mob's forcefield. Mobs can't toggle, so the shield is active
@@ -179,8 +203,8 @@ public class ForcefieldEffect extends CompoundVEffect {
         float hp = currentHp(uuid);
         float max = maxHp();
 
-        // Passive regen.
-        if (hp < max) {
+        // Passive regen - paused for a window after taking a hit.
+        if (hp < max && !regenLocked(uuid, level)) {
             hp = Math.min(max, hp + (float) Config.forcefieldRegenPerTick);
             shieldHealth.put(uuid, hp);
         }
@@ -235,7 +259,7 @@ public class ForcefieldEffect extends CompoundVEffect {
         }
     }
 
-    // === Damage absorption — called from ForgeEvents ===
+    // === Damage absorption - called from ForgeEvents ===
 
     /**
      * Absorbs incoming damage for any forcefield owner (player or mob). Returns the
@@ -245,6 +269,9 @@ public class ForcefieldEffect extends CompoundVEffect {
     public static float absorbDamage(LivingEntity owner, float damage) {
         UUID uuid = owner.getUUID();
         if (!fieldActive.getOrDefault(uuid, false)) return damage;
+
+        // Stamp the hit time so regen pauses for the configured window.
+        lastDamageTick.put(uuid, owner.level().getGameTime());
 
         // Incoming damage drains the shield faster than the raw amount.
         float drain = damage * (float) Config.forcefieldDamageMultiplier;
@@ -269,7 +296,7 @@ public class ForcefieldEffect extends CompoundVEffect {
         fieldActive.put(uuid, false);
         brokenLockout.put(uuid, true);
         if (owner instanceof Player player) {
-            setAmplifier(player, 0);
+            broadcastState(player, false, currentHp(uuid));
             // Announce the break on the actionbar (same spot as the "Shield: N%" readout).
             player.displayClientMessage(
                     net.minecraft.network.chat.Component.literal("\u00A7cForcefield broken!"), true);
@@ -310,17 +337,13 @@ public class ForcefieldEffect extends CompoundVEffect {
         }
     }
 
-    private static void setAmplifier(Player player, int amp) {
-        UUID uuid = player.getUUID();
-        currentlyToggling.add(uuid);
-        player.removeEffect(blueduck.compound_v.registry.EffectReg.FORCEFIELD.get());
-        MobEffectInstance inst = new MobEffectInstance(
-                blueduck.compound_v.registry.EffectReg.FORCEFIELD.get(),
-                MobEffectInstance.INFINITE_DURATION,
-                amp, false, false, false);
-        inst.setCurativeItems(new ArrayList<>());
-        player.addEffect(inst);
-        currentlyToggling.remove(uuid);
+    /** Push forcefield render state (active + health fraction) to tracking clients and self. */
+    private static void broadcastState(Player player, boolean active, float hp) {
+        float max = maxHp();
+        blueduck.compound_v.keybinds.PacketHandler.sendToTrackingAndSelf(
+                new blueduck.compound_v.util.S2CForcefieldSyncPacket(
+                        player.getId(), active, max > 0 ? hp / max : 1.0f),
+                player);
     }
 
     public static boolean isActive(UUID uuid) {
@@ -352,8 +375,12 @@ public class ForcefieldEffect extends CompoundVEffect {
         super.removeAttributeModifiers(entity, attributeMap, amplifier);
         if (entity instanceof Player player) {
             UUID uuid = player.getUUID();
-            if (currentlyToggling.contains(uuid)) return; // just toggling the amplifier
             clear(uuid);
+            // Tell tracking clients the shield is gone so it stops rendering on their screens.
+            if (player instanceof ServerPlayer sp) {
+                blueduck.compound_v.keybinds.PacketHandler.sendToTrackingAndSelf(
+                        new blueduck.compound_v.util.S2CForcefieldSyncPacket(sp.getId(), false, 0f), sp);
+            }
         }
     }
 }

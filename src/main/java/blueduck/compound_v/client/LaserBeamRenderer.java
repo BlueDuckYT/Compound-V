@@ -32,14 +32,14 @@ public class LaserBeamRenderer {
     private static final float EYE_Y_OFFSET = -0.04f;
     private static final float FORWARD_OFFSET = 0.35f;
 
-    // Beam widths — inner core is tight and bright, outer glow is wide
+    // Beam widths - inner core is tight and bright, outer glow is wide
     private static final float CORE_HALF = 0.04f;
     private static final float GLOW_HALF = 0.12f;
     private static final float OUTER_HALF = 0.2f;
 
     /**
      * Opaque, depth-writing, texture-free render type used for the black-hole void
-     * core. Uses POSITION_COLOR (matching addQuad's vertex writes — no normal/UV),
+     * core. Uses POSITION_COLOR (matching addQuad's vertex writes - no normal/UV),
      * with no blending so the black actually occludes the world behind it. Defined
      * via a tiny RenderType subclass because RenderType.create is protected.
      */
@@ -85,7 +85,7 @@ public class LaserBeamRenderer {
             { 0.92f, 0.8f, 1.0f,   0.6f, 0.15f, 1.0f,  0.4f, 0.05f, 0.85f },
             // 5 = Yellow (Husk, rare)
             { 1.0f, 1.0f, 0.85f,   1.0f, 0.9f, 0.15f,  0.9f, 0.75f, 0.02f },
-            // 6 = Chest Blast (Soldier Boy — wide gold beam)
+            // 6 = Chest Blast (Soldier Boy - wide gold beam)
             { 1.0f, 0.95f, 0.7f,   1.0f, 0.75f, 0.15f,  1.0f, 0.5f, 0.05f },
             // 7 = Rainbow (cycles through hues)
             { 1.0f, 1.0f, 1.0f,   1.0f, 0.0f, 0.0f,   1.0f, 0.0f, 0.0f },
@@ -179,21 +179,32 @@ public class LaserBeamRenderer {
 
             if (living instanceof Player player) {
                 // --- Chest Blast: wide single beam from chest ---
-                if (info.colorIndex == S2CLaserSyncPacket.COLOR_CHEST_BLAST) {
+                // Decide SHAPE by whether the player actually has the Chest Blast effect, NOT by
+                // the color index - otherwise a recolored chest blast (green/black/etc.) would
+                // fall through to the dual-eye laser shape. Color and shape are independent now.
+                boolean isChestBlast = player.hasEffect(blueduck.compound_v.registry.EffectReg.CHEST_BLAST.get());
+                if (isChestBlast) {
                     Vec3 chestPos = player.getPosition(partialTick).add(0, player.getBbHeight() * 0.6, 0);
                     Vec3 lookDir = player.getViewVector(partialTick);
 
                     // Push origin slightly forward so beam doesn't clip into body
                     Vec3 beamStart = chestPos.add(lookDir.scale(0.5));
 
-                    // Wide beam — 3 layers, progressively larger
+                    // Wide beam - 3 layers, progressively larger
                     float blastCore = 0.15f;
                     float blastGlow = 0.4f;
                     float blastOuter = 0.7f;
 
-                    renderBeaconBeam(consumer, matrix, beamStart, hitPos, wr, wg, wb, 0.9f * flicker, blastCore);
-                    renderBeaconBeam(consumer, matrix, beamStart, hitPos, cr, cg, cb, 0.5f * flicker, blastGlow);
-                    renderBeaconBeam(consumer, matrix, beamStart, hitPos, gr, gg, gb, 0.15f * glowFlicker, blastOuter);
+                    if (info.colorIndex == S2CLaserSyncPacket.COLOR_BLACK) {
+                        renderBeamBlackHole(bufferSource, matrix, beamStart, hitPos,
+                                cr, cg, cb, gr, gg, gb, flicker, glowFlicker,
+                                blastCore, blastGlow, blastOuter);
+                        consumer = bufferSource.getBuffer(RenderType.lightning());
+                    } else {
+                        renderBeaconBeam(consumer, matrix, beamStart, hitPos, wr, wg, wb, 0.9f * flicker, blastCore);
+                        renderBeaconBeam(consumer, matrix, beamStart, hitPos, cr, cg, cb, 0.5f * flicker, blastGlow);
+                        renderBeaconBeam(consumer, matrix, beamStart, hitPos, gr, gg, gb, 0.15f * glowFlicker, blastOuter);
+                    }
 
                 } else {
                 // --- Player: dual-eye beams using view yaw ---
@@ -217,10 +228,10 @@ public class LaserBeamRenderer {
 
                 // Intimidation mode (flagged by tiny intensity): render two SHORT stubs instead
                 // of a full beam, in ALL views. The stubs run along the player's look direction
-                // (stable — avoids the jitter from each eye->hitPos vector swinging while moving).
+                // (stable - avoids the jitter from each eye->hitPos vector swinging while moving).
                 //   * Third person: the two stubs are PARALLEL (same lookDir step from each eye).
-                //   * First person: the two stubs are SLIGHTLY NON-PARALLEL — each angled a touch
-                //     outward — so they read as two distinct beams from the camera rather than one.
+                //   * First person: the two stubs are SLIGHTLY NON-PARALLEL - each angled a touch
+                //     outward - so they read as two distinct beams from the camera rather than one.
                 Vec3 leftTarget = hitPos;
                 Vec3 rightTarget = hitPos;
                 Vec3 leftStart = leftEye;
@@ -229,6 +240,12 @@ public class LaserBeamRenderer {
                 if (intimidation) {
                     boolean firstPerson = player == mc.player
                             && mc.options.getCameraType().isFirstPerson();
+                    // Don't render the intimidation glow in first person by default - it clutters
+                    // your own view. Third person and other players are unaffected. Config-toggleable.
+                    if (firstPerson && !blueduck.compound_v.Config.laserIntimidationFirstPerson) {
+                        poseStack.popPose();
+                        continue;
+                    }
                     // First person reads better a touch shorter; third person a bit longer.
                     final double STUB_LEN = firstPerson ? 0.5 : 0.6;
 
@@ -249,6 +266,18 @@ public class LaserBeamRenderer {
                         leftTarget = leftStart.add(step);
                         rightTarget = rightStart.add(step);
                     }
+                }
+
+                // FIRST-PERSON OPACITY: scale the beam alpha for the LOCAL player in first person
+                // only, leaving third person (and other players) completely untouched. This lets
+                // you make your own lasers less obtrusive over your view without changing how they
+                // look to anyone else or in third person.
+                boolean fpSelf = player == mc.player
+                        && mc.options.getCameraType().isFirstPerson();
+                if (fpSelf) {
+                    float fpOpacity = (float) blueduck.compound_v.Config.laserFirstPersonOpacity;
+                    flicker *= fpOpacity;
+                    glowFlicker *= fpOpacity;
                 }
 
                 // Scale beam girth by laser intensity: a low-power "glow" is a thin wisp, full
@@ -272,7 +301,9 @@ public class LaserBeamRenderer {
                 }
             } else {
                 // --- Mob rendering ---
-                if (info.colorIndex == S2CLaserSyncPacket.COLOR_CHEST_BLAST) {
+                // Shape by effect presence (not color index) so recolored mob chest blasts still
+                // render as the wide torso beam instead of falling through to dual-eye lasers.
+                if (living.hasEffect(blueduck.compound_v.registry.EffectReg.CHEST_BLAST.get())) {
                     // Mob chest blast: wide beam from chest height
                     Vec3 mobPos = new Vec3(
                             Mth.lerp(partialTick, living.xo, living.getX()),
@@ -285,9 +316,16 @@ public class LaserBeamRenderer {
                     float blastGlow = 0.3f;
                     float blastOuter = 0.5f;
 
-                    renderBeaconBeam(consumer, matrix, beamStart, hitPos, wr, wg, wb, 0.9f * flicker, blastCore);
-                    renderBeaconBeam(consumer, matrix, beamStart, hitPos, cr, cg, cb, 0.5f * flicker, blastGlow);
-                    renderBeaconBeam(consumer, matrix, beamStart, hitPos, gr, gg, gb, 0.15f * glowFlicker, blastOuter);
+                    if (info.colorIndex == S2CLaserSyncPacket.COLOR_BLACK) {
+                        renderBeamBlackHole(bufferSource, matrix, beamStart, hitPos,
+                                cr, cg, cb, gr, gg, gb, flicker, glowFlicker,
+                                blastCore, blastGlow, blastOuter);
+                        consumer = bufferSource.getBuffer(RenderType.lightning());
+                    } else {
+                        renderBeaconBeam(consumer, matrix, beamStart, hitPos, wr, wg, wb, 0.9f * flicker, blastCore);
+                        renderBeaconBeam(consumer, matrix, beamStart, hitPos, cr, cg, cb, 0.5f * flicker, blastGlow);
+                        renderBeaconBeam(consumer, matrix, beamStart, hitPos, gr, gg, gb, 0.15f * glowFlicker, blastOuter);
+                    }
                 } else {
                 // --- Mob: dual-eye beams using head yaw ---
                 float headYaw = Mth.lerp(partialTick, living.yHeadRotO, living.yHeadRot);
@@ -351,7 +389,7 @@ public class LaserBeamRenderer {
     /**
      * Renders dual "black-hole" beams. The core is drawn as an OPAQUE pitch-black
      * tube in a depth-writing, non-additive render type (RenderType.leash) so it
-     * genuinely occludes the world behind it and reads as a true void — additive
+     * genuinely occludes the world behind it and reads as a true void - additive
      * blending alone can never produce black. A bright violet accretion halo is
      * then layered additively (lightning) around the void.
      *
@@ -385,8 +423,25 @@ public class LaserBeamRenderer {
     }
 
     /**
-     * Renders dual beams (left eye + right eye), each with 3 layers.
+     * Single wide beam black-hole variant for the Chest Blast (one beam from the torso, vs the
+     * dual-eye laser version). Pitch-black occluding void core wrapped in a violet accretion halo.
      */
+    private static void renderBeamBlackHole(MultiBufferSource.BufferSource bufferSource, Matrix4f matrix,
+                                            Vec3 start, Vec3 target,
+                                            float cr, float cg, float cb,
+                                            float gr, float gg, float gb,
+                                            float flicker, float glowFlicker,
+                                            float coreHalf, float glowHalf, float outerHalf) {
+        // 1. Opaque pitch-black void core (occludes scenery), a bit fatter so it reads as a void.
+        VertexConsumer opaque = bufferSource.getBuffer(VOID_CORE);
+        renderBeaconBeam(opaque, matrix, start, target, 0.0f, 0.0f, 0.0f, 1.0f, coreHalf * 1.6f);
+        bufferSource.endBatch(VOID_CORE);
+        // 2. Violet accretion halo (additive) wrapping the void.
+        VertexConsumer glow = bufferSource.getBuffer(RenderType.lightning());
+        renderBeaconBeam(glow, matrix, start, target, cr, cg, cb, 0.85f * flicker, glowHalf);
+        renderBeaconBeam(glow, matrix, start, target, gr, gg, gb, 0.3f * glowFlicker, outerHalf);
+        bufferSource.endBatch(RenderType.lightning());
+    }
     private static void renderDualBeam(VertexConsumer consumer, Matrix4f matrix,
                                         Vec3 leftEye, Vec3 rightEye, Vec3 leftTarget, Vec3 rightTarget,
                                         float wr, float wg, float wb,

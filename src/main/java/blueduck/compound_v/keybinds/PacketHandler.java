@@ -18,7 +18,7 @@ public class PacketHandler {
                     new ResourceLocation(CompoundVMod.MODID, "main"))
             .serverAcceptedVersions((status) -> true)
             .clientAcceptedVersions((status) -> true)
-            .networkProtocolVersion(() -> "1.10")
+            .networkProtocolVersion(() -> "1.12")
             .simpleChannel();
 
     private static int packetId = 0;
@@ -62,6 +62,18 @@ public class PacketHandler {
                 .decoder(S2CStormfrontBeamPacket::new)
                 .encoder(S2CStormfrontBeamPacket::toBytes)
                 .consumerMainThread(S2CStormfrontBeamPacket::handle)
+                .add();
+
+        INSTANCE.messageBuilder(blueduck.compound_v.util.S2CForcefieldSyncPacket.class, id(), NetworkDirection.PLAY_TO_CLIENT)
+                .decoder(blueduck.compound_v.util.S2CForcefieldSyncPacket::new)
+                .encoder(blueduck.compound_v.util.S2CForcefieldSyncPacket::toBytes)
+                .consumerMainThread(blueduck.compound_v.util.S2CForcefieldSyncPacket::handle)
+                .add();
+
+        INSTANCE.messageBuilder(blueduck.compound_v.util.S2CHeartbeatPacket.class, id(), NetworkDirection.PLAY_TO_CLIENT)
+                .decoder(blueduck.compound_v.util.S2CHeartbeatPacket::new)
+                .encoder(blueduck.compound_v.util.S2CHeartbeatPacket::toBytes)
+                .consumerMainThread(blueduck.compound_v.util.S2CHeartbeatPacket::handle)
                 .add();
     }
 

@@ -45,6 +45,7 @@ public class WebProjectileEntity extends ThrowableItemProjectile {
     private Vec3 stuckPos = null;
     private java.util.UUID stuckEntity = null; // mob the web latched onto (for reeling)
     private int ownerMissingTicks = 0;         // consecutive ticks the owner couldn't be found
+    private int stuckTicks = 0;                // ticks elapsed since this web became stuck
     private java.util.UUID shooterUUID = null; // captured at spawn; authoritative owner id
 
     public WebProjectileEntity(EntityType<? extends ThrowableItemProjectile> type, Level level) {
@@ -70,7 +71,7 @@ public class WebProjectileEntity extends ThrowableItemProjectile {
 
     @Override
     protected float getGravity() {
-        return stuck ? 0.0F : 0.01F;
+        return stuck ? 0.0F : 0.01F * (float) blueduck.compound_v.Config.spiderWebGravityMult;
     }
 
     public boolean isStuck() {
@@ -183,9 +184,47 @@ public class WebProjectileEntity extends ThrowableItemProjectile {
             this.entityData.set(DATA_ON_MOB, true);
             setNoGravity(true);
             setDeltaMovement(Vec3.ZERO);
-            return; // do NOT discard — stays as the active web until released/cut
+            return; // do NOT discard - stays as the active web until released/cut
         }
         discard();
+    }
+
+    /**
+     * Raycast webbing: instantly latch this web to a block position (no projectile travel).
+     * Mirrors the stuck state set by a normal block hit.
+     */
+    public void forceStickToBlock(Vec3 pos) {
+        setPos(pos.x, pos.y, pos.z);
+        stuck = true;
+        stuckPos = pos;
+        this.entityData.set(DATA_STUCK, true);
+        setNoGravity(true);
+        setDeltaMovement(Vec3.ZERO);
+    }
+
+    /**
+     * Raycast webbing: instantly latch this web onto a mob (no projectile travel). Applies the
+     * same web-root effects a thrown web would, and marks it latched for scroll-reel/swing.
+     */
+    public void forceStickToMob(LivingEntity target) {
+        target.addEffect(new MobEffectInstance(MobEffects.MOVEMENT_SLOWDOWN, 100, 4, false, true, true));
+        target.addEffect(new MobEffectInstance(MobEffects.WEAKNESS, 100, 1, false, true, true));
+        target.addEffect(new MobEffectInstance(MobEffects.DIG_SLOWDOWN, 100, 2, false, true, true));
+        if (level() instanceof ServerLevel sl) {
+            sl.sendParticles(WEB_STRING,
+                    target.getX(), target.getY() + target.getBbHeight() / 2, target.getZ(),
+                    15, 0.4, 0.5, 0.4, 0.05);
+        }
+        level().playSound(null, target.getX(), target.getY(), target.getZ(),
+                SoundEvents.SLIME_BLOCK_PLACE, SoundSource.PLAYERS, 0.8F, 0.8F);
+        Vec3 tp = target.position().add(0, target.getBbHeight() * 0.5, 0);
+        setPos(tp.x, tp.y, tp.z);
+        stuck = true;
+        stuckEntity = target.getUUID();
+        this.entityData.set(DATA_STUCK, true);
+        this.entityData.set(DATA_ON_MOB, true);
+        setNoGravity(true);
+        setDeltaMovement(Vec3.ZERO);
     }
 
     @Override
@@ -215,7 +254,7 @@ public class WebProjectileEntity extends ThrowableItemProjectile {
     public void tick() {
         // Use the synced stuck state so this works on BOTH sides. On the client the raw
         // `stuck` field is never set (only DATA_STUCK syncs), so checking it directly made the
-        // client treat a stuck web as still-in-flight and discard it after 3s — the despawn
+        // client treat a stuck web as still-in-flight and discard it after 3s - the despawn
         // the player was seeing. isStuck() reads the synced flag on the client.
         if (isStuck()) {
             // If latched to a mob, follow it (and drop if it died/vanished).
@@ -226,7 +265,7 @@ public class WebProjectileEntity extends ThrowableItemProjectile {
                         discard();
                         return;
                     }
-                    // Break the strand if the latched mob gets too far from the shooter — the
+                    // Break the strand if the latched mob gets too far from the shooter - the
                     // web shouldn't keep a mob tethered across the world.
                     Entity owner = resolveOwner();
                     if (owner != null && owner.distanceTo(tgt) > Config.spiderMaxRope + 8.0) {
@@ -243,15 +282,28 @@ public class WebProjectileEntity extends ThrowableItemProjectile {
                 setPos(stuckPos);
             }
 
-            // Lifetime / orphan handling is SERVER-side only — the client must never discard a
+            // Lifetime / orphan handling is SERVER-side only - the client must never discard a
             // stuck web on its own (the server is authoritative and will sync removal).
             if (level() instanceof ServerLevel sl) {
+                stuckTicks++;
                 // Resolve the shooter authoritatively: prefer the captured UUID looked up
                 // against the connected player list; fall back to the owner reference. A
                 // momentarily-null getOwner() must not read as "gone".
                 Entity owner = resolveOwner();
                 if (owner == null) ownerMissingTicks++;
                 else ownerMissingTicks = 0;
+
+                // A web owned by a non-player has no release/reel/scroll mechanism to cut it, so
+                // mob webs are given a maximum stuck lifetime and self-clean. Player webs are
+                // exempt - they persist while held and are cut by the player's own controls. Only
+                // applied when the owner is confirmed a non-player; a momentarily-null owner falls
+                // through to the longer orphan timer below so a player's web isn't culled during a
+                // brief resolution hiccup.
+                if (owner != null && !(owner instanceof net.minecraft.world.entity.player.Player)
+                        && stuckTicks > Config.spiderMobWebStuckMaxTicks) {
+                    discard();
+                    return;
+                }
 
                 if (owner != null && tickCount % 2 == 0) {
                     Vec3 start = owner.position().add(0, owner.getEyeHeight() * 0.7, 0);
@@ -304,7 +356,7 @@ public class WebProjectileEntity extends ThrowableItemProjectile {
             }
         }
 
-        // Flight timeout — SERVER-side only, and only while genuinely still in flight.
+        // Flight timeout - SERVER-side only, and only while genuinely still in flight.
         if (!level().isClientSide && tickCount > 60) discard(); // 3 second flight max
     }
 

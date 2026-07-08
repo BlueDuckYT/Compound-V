@@ -8,14 +8,13 @@ import net.minecraft.world.entity.ai.attributes.Attributes;
 import java.util.UUID;
 
 /**
- * Luck — Passive power that increases all loot.
+ * Luck - Passive power that increases all loot.
  * 3 levels via CompoundVEffectGiver(LUCK, 3).
  *
- * - Vanilla LUCK attribute (+1/+2/+3) — affects chest loot, fishing
+ * - Vanilla LUCK attribute (+1/+2/+3) - affects chest loot, fishing
  * - Looting boost (+1/+2/+3) via LootingLevelEvent in ForgeEvents
- * - Bonus XP from mining via BlockEvent.BreakEvent in ForgeEvents
  *
- * No combat bonuses. Fortune boost (+1/+2/+3) via LuckFortuneModifier (GlobalLootModifier)
+ * No combat bonuses. (Block-fortune boost was removed.)
  */
 public class LuckEffect extends CompoundVEffect {
 

@@ -28,7 +28,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Chest Blast — Soldier Boy's signature power. V1 exclusive.
+ * Chest Blast - Soldier Boy's signature power. V1 exclusive.
  *
  * Passive bonuses:
  * - Double damage output (2x strength multiplier on top of base)
@@ -48,7 +48,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class ChestBlastEffect extends CompoundVEffect {
 
-    private static final double BLAST_WIDTH = 0.8;          // beam cone half-width — tighter to match visuals
+    private static final double BLAST_WIDTH = 0.8;          // beam cone half-width - tighter to match visuals
 
     private static final DustParticleOptions BLAST_CORE = new DustParticleOptions(
             new Vector3f(1.0f, 0.85f, 0.2f), 2.0f); // bright gold
@@ -56,6 +56,76 @@ public class ChestBlastEffect extends CompoundVEffect {
             new Vector3f(1.0f, 0.5f, 0.1f), 1.5f);  // orange edge
     private static final DustParticleOptions CHARGE_PARTICLE = new DustParticleOptions(
             new Vector3f(1.0f, 0.7f, 0.1f), 0.8f);  // charge glow
+
+    // ---- Beam color (mirrors laser eyes' color system) ---------------------------------------
+    // Default gold/orange. Rare natural rolls on first blast: rainbow, black, green, red. Settable
+    // via "/lasercolor chestblast <color>". Stored per-player under compound_v_chestblast_color.
+    private static int getChestBlastColor(ServerPlayer player) {
+        var data = player.getPersistentData();
+        String key = "compound_v_chestblast_color";
+        if (data.contains(key)) return data.getInt(key);
+        int rolled = rollChestBlastColor(player);
+        data.putInt(key, rolled);
+        return rolled;
+    }
+
+    private static int rollChestBlastColor(ServerPlayer player) {
+        var rng = player.getRandom();
+        if (rng.nextInt(250) == 0) return S2CLaserSyncPacket.COLOR_RAINBOW; // 1/250
+        if (rng.nextInt(200) == 0) return S2CLaserSyncPacket.COLOR_BLACK;   // 1/200
+        if (rng.nextInt(200) == 0) return S2CLaserSyncPacket.COLOR_RED;     // 1/200
+        if (rng.nextInt(80) == 0)  return S2CLaserSyncPacket.COLOR_GREEN;   // 1/80
+        return S2CLaserSyncPacket.COLOR_CHEST_BLAST;                        // default gold/orange
+    }
+
+    /** Core (bright center) dust color for a player's chest-blast beam. */
+    private static DustParticleOptions coreParticle(ServerPlayer player, ServerLevel level) {
+        return dust(colorRGB(getChestBlastColor(player), level, true), 2.0f);
+    }
+    /** Edge (outer cone) dust color for a player's chest-blast beam. */
+    private static DustParticleOptions edgeParticle(ServerPlayer player, ServerLevel level) {
+        return dust(colorRGB(getChestBlastColor(player), level, false), 1.5f);
+    }
+    private static DustParticleOptions dust(Vector3f rgb, float size) {
+        return new DustParticleOptions(rgb, size);
+    }
+
+    /** Server-safe HSB→RGB (avoids java.awt, which can fail headless). h/s/b in [0,1]. */
+    private static Vector3f hsbToRgb(float h, float s, float b) {
+        float r = b, g = b, bl = b;
+        if (s != 0) {
+            float hh = (h - (float) Math.floor(h)) * 6.0f;
+            int i = (int) hh;
+            float f = hh - i;
+            float p = b * (1 - s);
+            float q = b * (1 - s * f);
+            float t = b * (1 - s * (1 - f));
+            switch (i) {
+                case 0 -> { r = b; g = t; bl = p; }
+                case 1 -> { r = q; g = b; bl = p; }
+                case 2 -> { r = p; g = b; bl = t; }
+                case 3 -> { r = p; g = q; bl = b; }
+                case 4 -> { r = t; g = p; bl = b; }
+                default -> { r = b; g = p; bl = q; }
+            }
+        }
+        return new Vector3f(r, g, bl);
+    }
+
+    /** Map a color index to an RGB; core=true is the brighter center, false the outer edge. */
+    private static Vector3f colorRGB(int color, ServerLevel level, boolean core) {
+        switch (color) {
+            case S2CLaserSyncPacket.COLOR_RAINBOW -> {
+                // Cycle hue over time (shared by core/edge so the beam reads as one rainbow).
+                float hue = (level.getGameTime() % 70L) / 70.0f;
+                return hsbToRgb(hue, 1.0f, core ? 1.0f : 0.85f);
+            }
+            case S2CLaserSyncPacket.COLOR_BLACK -> { return core ? new Vector3f(0.12f, 0.05f, 0.18f) : new Vector3f(0.04f, 0.0f, 0.08f); }
+            case S2CLaserSyncPacket.COLOR_GREEN -> { return core ? new Vector3f(0.4f, 1.0f, 0.3f) : new Vector3f(0.15f, 0.8f, 0.1f); }
+            case S2CLaserSyncPacket.COLOR_RED   -> { return core ? new Vector3f(1.0f, 0.25f, 0.2f) : new Vector3f(0.8f, 0.08f, 0.05f); }
+            default -> { return core ? new Vector3f(1.0f, 0.85f, 0.2f) : new Vector3f(1.0f, 0.5f, 0.1f); } // gold/orange
+        }
+    }
 
     private enum BlastState { IDLE, CHARGING, BLASTING, NOVA_CHARGING }
 
@@ -80,7 +150,7 @@ public class ChestBlastEffect extends CompoundVEffect {
         return PowerType.ACTIVE;
     }
 
-    // === Combat stat overrides — Soldier Boy is a tank ===
+    // === Combat stat overrides - Soldier Boy is a tank ===
 
     @Override
     public double getStrengthMultiplier(int amplifier) {
@@ -105,7 +175,7 @@ public class ChestBlastEffect extends CompoundVEffect {
         PlayerBlastState state = stateMap.computeIfAbsent(uuid, k -> new PlayerBlastState());
         long now = level.getGameTime();
 
-        // Already in any active state — ignore
+        // Already in any active state - ignore
         if (state.state != BlastState.IDLE) return;
 
         // Shared cooldown for both beam and nova
@@ -169,7 +239,7 @@ public class ChestBlastEffect extends CompoundVEffect {
                         "§6§lChest Blast charging: " + secondsLeft + "s"),
                 true);
 
-        // Escalating charge particles — more intense as charge builds
+        // Escalating charge particles - more intense as charge builds
         int particleCount = (int) (2 + chargePercent * 10);
         double chestY = player.getY() + player.getBbHeight() * 0.6;
 
@@ -185,7 +255,7 @@ public class ChestBlastEffect extends CompoundVEffect {
             }
         }
 
-        // Magnetism-style ambient drift particles — spawn at random positions and drift inward
+        // Magnetism-style ambient drift particles - spawn at random positions and drift inward
         if (player.tickCount % 4 == 0) {
             int driftCount = (int) (1 + chargePercent * 4);
             for (int i = 0; i < driftCount; i++) {
@@ -194,7 +264,7 @@ public class ChestBlastEffect extends CompoundVEffect {
                 double py = chestY - 0.5 + player.getRandom().nextDouble() * 1.0;
                 double px = player.getX() + Math.cos(angle) * radius;
                 double pz = player.getZ() + Math.sin(angle) * radius;
-                level.sendParticles(BLAST_EDGE, px, py, pz,
+                level.sendParticles(edgeParticle(player, level), px, py, pz,
                         1, 0.0, 0.0, 0.0, 0.0);
             }
         }
@@ -210,9 +280,9 @@ public class ChestBlastEffect extends CompoundVEffect {
                     1, 0.05, 0.05, 0.05, 0.02);
         }
 
-        // Core glow at chest — intensifies
+        // Core glow at chest - intensifies
         if (player.tickCount % 3 == 0 && chargePercent > 0.3) {
-            level.sendParticles(BLAST_CORE,
+            level.sendParticles(coreParticle(player, level),
                     player.getX(), chestY, player.getZ(),
                     (int) (chargePercent * 5), 0.15, 0.15, 0.15, 0.01);
         }
@@ -228,14 +298,14 @@ public class ChestBlastEffect extends CompoundVEffect {
                     SoundEvents.BEACON_AMBIENT, SoundSource.PLAYERS, 0.8F, 1.5F);
         }
 
-        // Charge complete — transition to blasting
+        // Charge complete - transition to blasting
         if (state.ticksRemaining <= 0) {
             state.state = BlastState.BLASTING;
             state.ticksRemaining = blueduck.compound_v.Config.chestBlastDuration;
             state.strippedThisBlast.clear();
             state.beamDirection = null; // fresh start for turn-speed limiting
 
-            // === Initial explosive burst — radial knockback + damage around the player ===
+            // === Initial explosive burst - radial knockback + damage around the player ===
             AABB burstBox = player.getBoundingBox().inflate(8.0);
             for (Entity e : level.getEntities(player, burstBox,
                     ent -> ent instanceof LivingEntity && ent.isAlive() && ent != player)) {
@@ -245,9 +315,14 @@ public class ChestBlastEffect extends CompoundVEffect {
 
                 // Damage falls off with distance
                 float burstDamage = (float) (blueduck.compound_v.Config.chestBlastBurstDamage * (1.0 - dist / 8.0));
-                target.hurt(player.damageSources().playerAttack(player), burstDamage);
+                CompoundVEffect.beginPowerDamage();
+                try {
+                    target.hurt(player.damageSources().indirectMagic(player, player), burstDamage);
+                } finally {
+                    CompoundVEffect.endPowerDamage();
+                }
 
-                // Knockback away from player — stronger at close range
+                // Knockback away from player - stronger at close range
                 Vec3 knockDir = target.position().subtract(player.position()).normalize();
                 double knockStrength = 2.0 * (1.0 - dist / 8.0);
                 target.setDeltaMovement(knockDir.x * knockStrength, 0.5, knockDir.z * knockStrength);
@@ -270,7 +345,7 @@ public class ChestBlastEffect extends CompoundVEffect {
                 double angle = (i / 24.0) * Math.PI * 2;
                 double px = player.getX() + Math.cos(angle) * 3.0;
                 double pz = player.getZ() + Math.sin(angle) * 3.0;
-                level.sendParticles(BLAST_CORE, px, player.getY() + player.getBbHeight() * 0.6, pz,
+                level.sendParticles(coreParticle(player, level), px, player.getY() + player.getBbHeight() * 0.6, pz,
                         1, 0.1, 0.1, 0.1, 0.05);
             }
 
@@ -288,7 +363,7 @@ public class ChestBlastEffect extends CompoundVEffect {
                         "§c§lChest Blast active: " + secondsLeft + "s"),
                 true);
 
-        // Freeze player in place — can still look around but cannot move
+        // Freeze player in place - can still look around but cannot move
         player.setDeltaMovement(0, player.onGround() ? 0 : player.getDeltaMovement().y, 0);
         player.hurtMarked = true;
         // High-level slowness to override client-side WASD input
@@ -299,7 +374,7 @@ public class ChestBlastEffect extends CompoundVEffect {
         Vec3 chestPos = new Vec3(player.getX(), player.getY() + player.getBbHeight() * 0.6, player.getZ());
         double blastRange = blueduck.compound_v.Config.chestBlastRange;
 
-        // Turn speed limiting — beam can only rotate a few degrees per tick
+        // Turn speed limiting - beam can only rotate a few degrees per tick
         if (state.beamDirection == null) {
             state.beamDirection = desiredDir;
         }
@@ -318,7 +393,7 @@ public class ChestBlastEffect extends CompoundVEffect {
         }
         state.beamDirection = lookDir;
 
-        // === Raycast against blocks — beam stops at walls if configured ===
+        // === Raycast against blocks - beam stops at walls if configured ===
         Vec3 beamEnd = chestPos.add(lookDir.scale(blastRange));
         double effectiveRange = blastRange;
         Vec3 hitPos;
@@ -336,11 +411,11 @@ public class ChestBlastEffect extends CompoundVEffect {
         }
         PacketHandler.sendToTrackingAndSelf(
                 new S2CLaserSyncPacket(player.getId(), hitPos.x, hitPos.y, hitPos.z,
-                        S2CLaserSyncPacket.COLOR_CHEST_BLAST),
+                        getChestBlastColor(player)),
                 player);
 
         // Chest glow particles on the player
-        level.sendParticles(BLAST_CORE,
+        level.sendParticles(coreParticle(player, level),
                 player.getX(), player.getY() + player.getBbHeight() * 0.6, player.getZ(),
                 3, 0.2, 0.15, 0.2, 0.01);
 
@@ -384,7 +459,7 @@ public class ChestBlastEffect extends CompoundVEffect {
             double distToTarget = toTarget.length();
             if (distToTarget > effectiveRange || distToTarget < 0.5) continue;
 
-            // Dot product check — how aligned is the target with the look direction
+            // Dot product check - how aligned is the target with the look direction
             double dot = toTarget.normalize().dot(lookDir);
             // Required alignment loosens with distance (wider cone)
             double coneWidthAtDist = BLAST_WIDTH / distToTarget;
@@ -395,20 +470,47 @@ public class ChestBlastEffect extends CompoundVEffect {
             // === Hit! ===
             boolean alreadyStripped = state.strippedThisBlast.contains(target.getUUID());
 
-            // Deal damage — respect mercy iframes for recently stripped targets
-            if (!alreadyStripped || target.invulnerableTime <= 0) {
-                target.invulnerableTime = 0;
-                if (target instanceof Player) {
-                    target.hurt(player.damageSources().playerAttack(player),
-                            (float) blueduck.compound_v.Config.chestBlastBeamDamage * 0.5f);
-                } else {
-                    target.hurt(player.damageSources().playerAttack(player),
-                            (float) blueduck.compound_v.Config.chestBlastBeamDamage);
+            // Active Forcefield BLOCKS the beam: it stops the power-strip getting through, but the
+            // shield takes heavy damage and the holder is knocked back hard. The bonus shield damage
+            // is applied straight to the field's health pool (on top of the beam's normal damage,
+            // which the field also absorbs), so a sustained blast collapses the shield fast.
+            boolean forcefieldBlocking = ForcefieldEffect.isActive(target.getUUID());
+            if (forcefieldBlocking) {
+                ForcefieldEffect.absorbDamage(target,
+                        (float) blueduck.compound_v.Config.chestBlastForcefieldDamage);
+                Vec3 knockDir = toTarget.normalize();
+                double kb = blueduck.compound_v.Config.chestBlastForcefieldKnockback;
+                target.setDeltaMovement(knockDir.x * kb, 0.35, knockDir.z * kb);
+                target.hurtMarked = true;
+                if (player.tickCount % 4 == 0) {
+                    level.sendParticles(ParticleTypes.ELECTRIC_SPARK,
+                            target.getX(), target.getY() + target.getBbHeight() * 0.5, target.getZ(),
+                            10, 0.4, 0.5, 0.4, 0.1);
+                    level.playSound(null, target.getX(), target.getY(), target.getZ(),
+                            SoundEvents.SHIELD_BLOCK, SoundSource.PLAYERS, 1.0F, 0.6F);
                 }
             }
 
-            // Strip Compound V powers — once per target per blast (if enabled)
-            if (!alreadyStripped && blueduck.compound_v.Config.chestBlastStripsPowers) {
+            // Deal damage - respect mercy iframes for recently stripped targets
+            if (!alreadyStripped || target.invulnerableTime <= 0) {
+                target.invulnerableTime = 0;
+                CompoundVEffect.beginPowerDamage();
+                try {
+                    if (target instanceof Player) {
+                        target.hurt(player.damageSources().indirectMagic(player, player),
+                                (float) blueduck.compound_v.Config.chestBlastBeamDamage * 0.5f);
+                    } else {
+                        target.hurt(player.damageSources().indirectMagic(player, player),
+                                (float) blueduck.compound_v.Config.chestBlastBeamDamage);
+                    }
+                } finally {
+                    CompoundVEffect.endPowerDamage();
+                }
+            }
+
+            // Strip Compound V powers - once per target per blast (if enabled).
+            // An active Forcefield blocks the strip entirely (the beam doesn't get through).
+            if (!alreadyStripped && !forcefieldBlocking && blueduck.compound_v.Config.chestBlastStripsPowers) {
                 boolean isInvincible = target.hasEffect(EffectReg.INVINCIBLE.get());
                 boolean canStrip = !isInvincible || blueduck.compound_v.Config.chestBlastStripsInvincible;
                 boolean shieldBlocking = blueduck.compound_v.Config.chestBlastShieldBlocksStrip && target.isBlocking();
@@ -426,13 +528,13 @@ public class ChestBlastEffect extends CompoundVEffect {
                     AntiVItem.stripCompoundVEffects(target);
                     state.strippedThisBlast.add(target.getUUID());
 
-                    // Blast the target away from the beam — should launch them out of range
+                    // Blast the target away from the beam - should launch them out of range
                     Vec3 knockDir = toTarget.normalize();
                     double knockStrength = 2.5;
                     target.setDeltaMovement(knockDir.x * knockStrength, 0.6, knockDir.z * knockStrength);
                     target.hurtMarked = true;
 
-                    // Mercy iframes after being stripped — 40 ticks (2 seconds) to escape
+                    // Mercy iframes after being stripped - 40 ticks (2 seconds) to escape
                     target.invulnerableTime = 40;
 
                     // Dramatic strip visual
@@ -445,7 +547,7 @@ public class ChestBlastEffect extends CompoundVEffect {
                     level.playSound(null, target.getX(), target.getY(), target.getZ(),
                             SoundEvents.BEACON_DEACTIVATE, SoundSource.PLAYERS, 1.0F, 0.5F);
                 } else if (hadCompoundV && !canStrip) {
-                    // Invincible or shield resists the strip — sparks fly but nothing happens
+                    // Invincible or shield resists the strip - sparks fly but nothing happens
                     state.strippedThisBlast.add(target.getUUID()); // don't retry
                     level.sendParticles(ParticleTypes.ELECTRIC_SPARK,
                             target.getX(), target.getY() + target.getBbHeight() * 0.5, target.getZ(),
@@ -453,12 +555,12 @@ public class ChestBlastEffect extends CompoundVEffect {
                     level.playSound(null, target.getX(), target.getY(), target.getZ(),
                             SoundEvents.SHIELD_BLOCK, SoundSource.PLAYERS, 1.0F, 0.5F);
                 }
-                // Entities without CompoundV get no mercy — continuous beam damage
+                // Entities without CompoundV get no mercy - continuous beam damage
             }
 
             // Hit particles on target (ongoing damage visual)
             if (player.tickCount % 5 == 0) {
-                level.sendParticles(BLAST_EDGE,
+                level.sendParticles(edgeParticle(player, level),
                         target.getX(), target.getY() + target.getBbHeight() * 0.5, target.getZ(),
                         5, 0.3, 0.3, 0.3, 0.05);
             }
@@ -596,51 +698,49 @@ public class ChestBlastEffect extends CompoundVEffect {
     }
 
     private void detonateNova(ServerPlayer player, ServerLevel level, PlayerBlastState state) {
-        double radius = blueduck.compound_v.Config.chestBlastNovaRadius;
-
-        // Strip powers from nearby powered entities before the blast (the CV-specific
-        // behavior vanilla can't do). Damage, knockback, particles, sound, and block
-        // destruction are all handled by the standard explosion below.
-        if (blueduck.compound_v.Config.chestBlastStripsPowers) {
-            AABB searchBox = player.getBoundingBox().inflate(radius);
-            for (net.minecraft.world.entity.Entity e : level.getEntities(player, searchBox,
-                    ent -> ent instanceof LivingEntity && ent.isAlive() && ent != player)) {
-                LivingEntity target = (LivingEntity) e;
-                if (target.distanceTo(player) > radius) continue;
-                boolean hasCompV = false;
-                for (MobEffectInstance inst : target.getActiveEffects()) {
-                    if (inst.getEffect() instanceof CompoundVEffect) { hasCompV = true; break; }
-                }
-                if (!hasCompV) continue;
-                boolean isInvincible = target.hasEffect(EffectReg.INVINCIBLE.get());
-                boolean canStrip = !isInvincible || blueduck.compound_v.Config.chestBlastStripsInvincible;
-                if (canStrip) {
-                    blueduck.compound_v.item.AntiVItem.stripCompoundVEffects(target);
-                    level.sendParticles(ParticleTypes.FLASH,
-                            target.getX(), target.getY() + target.getBbHeight() * 0.5, target.getZ(),
-                            2, 0.2, 0.2, 0.2, 0.0);
-                }
-            }
-        }
-
-        // Standard explosion: vanilla handles damage, knockback, particles and sound.
-        // Block destruction follows the nova block-break config; drops follow the
-        // drop config (DESTROY drops with the usual ~1/power fraction; DESTROY_WITH_DECAY
-        // drops less). When block breaking is disabled, interaction NONE keeps the boom
-        // without terrain damage.
-        net.minecraft.world.level.Level.ExplosionInteraction interaction;
-        if (!blueduck.compound_v.Config.chestBlastNovaBreaksBlocks) {
-            interaction = net.minecraft.world.level.Level.ExplosionInteraction.NONE;
-        } else {
-            interaction = net.minecraft.world.level.Level.ExplosionInteraction.TNT;
-        }
-
         double cx = player.getX();
         double cy = player.getY() + player.getBbHeight() * 0.5;
         double cz = player.getZ();
-        float power = (float) blueduck.compound_v.Config.chestBlastNovaPower;
-        level.explode(player, player.damageSources().playerAttack(player), null,
-                cx, cy, cz, power, false, interaction);
+
+        double radius = blueduck.compound_v.Config.chestBlastNovaRadius;
+        float novaDamage = (float) blueduck.compound_v.Config.chestBlastNovaDamage;
+        double knockback = blueduck.compound_v.Config.chestBlastNovaKnockback;
+
+        // Terrain destruction + the vanilla explosion VISUAL/SOUND. We drive damage ourselves
+        // below (so the configured radius/damage/knockback are actually honored), so this explosion
+        // is set NOT to hurt entities - power only affects block breaking when enabled.
+        net.minecraft.world.level.Level.ExplosionInteraction interaction =
+                blueduck.compound_v.Config.chestBlastNovaBreaksBlocks
+                        ? net.minecraft.world.level.Level.ExplosionInteraction.TNT
+                        : net.minecraft.world.level.Level.ExplosionInteraction.NONE;
+        float blockPower = blueduck.compound_v.Config.chestBlastNovaBreaksBlocks
+                ? (float) blueduck.compound_v.Config.chestBlastNovaPower : 0.0f;
+        // Non-damaging vanilla explosion for blocks + particles/sound (radius-scaled visual).
+        level.explode(player, null, null, cx, cy, cz, blockPower, false, interaction);
+
+        // Manual AOE damage and knockback so the configured radius, damage, and knockback values
+        // are applied directly rather than through vanilla's explosion damage formula.
+        AABB area = new AABB(cx - radius, cy - radius, cz - radius, cx + radius, cy + radius, cz + radius);
+        Vec3 center = new Vec3(cx, cy, cz);
+        for (LivingEntity target : level.getEntitiesOfClass(LivingEntity.class, area,
+                e -> e != player && e.isAlive())) {
+            double dist = target.position().add(0, target.getBbHeight() * 0.5, 0).distanceTo(center);
+            if (dist > radius) continue;
+            // Linear falloff from full damage at the center to 0 at the edge.
+            float falloff = (float) (1.0 - dist / radius);
+            float dmg = novaDamage * falloff;
+            if (dmg <= 0) continue;
+            target.invulnerableTime = 0;
+            CompoundVEffect.powerHurt(target, player.damageSources().indirectMagic(player, player), dmg);
+            // Knockback outward (+ upward pop), scaled by falloff.
+            Vec3 dir = target.position().subtract(center);
+            if (dir.lengthSqr() < 1.0e-4) dir = new Vec3(0, 1, 0);
+            dir = dir.normalize();
+            double kb = knockback * falloff;
+            target.setDeltaMovement(
+                    target.getDeltaMovement().add(dir.x * kb, 0.4 * falloff + 0.2, dir.z * kb));
+            target.hurtMarked = true;
+        }
 
         // === Cooldown and reset (shared with beam) ===
         state.state = BlastState.IDLE;

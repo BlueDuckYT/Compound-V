@@ -96,6 +96,7 @@ public class CompoundVMod {
                 var renderer = event.getSkin(skin);
                 if (renderer instanceof PlayerRenderer playerRenderer) {
                     playerRenderer.addLayer(new DensityRenderLayer(playerRenderer));
+                    playerRenderer.addLayer(new blueduck.compound_v.client.SlimeRenderLayer(playerRenderer));
                     playerRenderer.addLayer(new blueduck.compound_v.client.StarPowerRenderLayer(playerRenderer));
                     playerRenderer.addLayer(new blueduck.compound_v.client.ForcefieldRenderLayer(playerRenderer));
                 }

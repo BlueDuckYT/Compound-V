@@ -164,7 +164,7 @@ public class ExplosiveEffect extends CompoundVEffect {
 
             float falloff = 1.0f - (float) (dist / radius);
             float damage = radius * 3.0f * falloff;
-            target.hurt(player.damageSources().playerAttack(player), damage);
+            CompoundVEffect.powerHurt(target, player.damageSources().playerAttack(player), damage);
 
             Vec3 knockDir = target.position().subtract(player.position()).normalize();
             double knockStrength = 2.0 * falloff;

@@ -64,6 +64,9 @@ public class StormfrontEffect extends CompoundVEffect {
         return PowerType.ACTIVE;
     }
 
+    @Override
+    public boolean canFly() { return true; }
+
     // === Combat stats ===
 
     @Override

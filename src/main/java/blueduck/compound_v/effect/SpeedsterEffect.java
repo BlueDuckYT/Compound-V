@@ -124,12 +124,12 @@ public class SpeedsterEffect extends CompoundVEffect {
                                 && blockpos.closerToCenterThan(livingentity.position(), 2.0D)
                                 && !livingentity.equals(entity)) {
 
-                            // Increased damage: base 2 + 1.5 per amplifier level above 1
-                            // At level 5 (amplifier=4): 2 + 1.5*3 = 6.5 per hit, hits every tick while sprinting
-                            float damage = 2.0f + 1.5f * (amplifier - 1);
-                            // Halve damage against players
+                            // Configurable: base damage + per-amplifier scaling (above level 1).
+                            float damage = (float) (Config.speedsterSprintDamage
+                                    + Config.speedsterSprintDamagePerAmp * (amplifier - 1));
+                            // Reduced damage against players (configurable multiplier).
                             if (livingentity instanceof Player) {
-                                damage *= 0.5f;
+                                damage *= (float) Config.speedsterPlayerDamageMult;
                             }
                             float healthBefore = livingentity.getHealth();
 

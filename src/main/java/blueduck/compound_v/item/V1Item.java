@@ -70,13 +70,28 @@ public class V1Item extends Item {
     }
 
     /**
-     * Upgrade all existing CompoundVEffect instances to their max amplifier level
-     * and make them permanent. Looks up max level from all effect matrices.
+     * Power-to-power upgrade map for V1. Drinking V1 while holding a KEY power promotes it to the
+     * VALUE power (granted at max level) instead of just maxing the key's own level; anything not
+     * in the map is maxed in place. Combines config-defined paths with paths registered by addon
+     * mods through the public API, merged here so an addon registering at any point before a V1 is
+     * consumed is honored regardless of load order. Config entries take precedence on conflicts.
      */
+    private static java.util.Map<net.minecraft.world.effect.MobEffect, net.minecraft.world.effect.MobEffect> upgradeMap() {
+        java.util.Map<net.minecraft.world.effect.MobEffect, net.minecraft.world.effect.MobEffect> merged =
+                new java.util.HashMap<>(blueduck.compound_v.api.CompoundVUpgrades.getRegisteredPaths());
+        merged.putAll(blueduck.compound_v.Config.v1UpgradePaths);
+        return merged;
+    }
+
     private void upgradeToMaxLevel(LivingEntity entity) {
         boolean hasMimic = entity.hasEffect(blueduck.compound_v.registry.EffectReg.MIMIC.get());
+        var upgrades = upgradeMap();
+
         java.util.List<MobEffectInstance> toUpgrade = new java.util.ArrayList<>();
-        boolean hasPowerAbsorption = false;
+        // Powers that should be PROMOTED to a different power. Collected first, applied after the
+        // iteration so we don't mutate the effect list while looping it.
+        java.util.List<MobEffectInstance> toPromote = new java.util.ArrayList<>();
+
         for (MobEffectInstance inst : entity.getActiveEffects()) {
             if (inst.getEffect() instanceof CompoundVEffect
                     && !(inst.getEffect() instanceof BadCompoundVEffect)) {
@@ -85,24 +100,33 @@ public class V1Item extends Item {
                 if (hasMimic && !(inst.getEffect() instanceof blueduck.compound_v.effect.MimicEffect)) {
                     continue;
                 }
-                if (inst.getEffect() == blueduck.compound_v.registry.EffectReg.POWER_ABSORPTION.get()) {
-                    hasPowerAbsorption = true;
+                if (upgrades.containsKey(inst.getEffect())) {
+                    toPromote.add(inst);
                 } else {
                     toUpgrade.add(inst);
                 }
             }
         }
-        if (hasPowerAbsorption) {
-            entity.removeEffect(blueduck.compound_v.registry.EffectReg.POWER_ABSORPTION.get());
-            blueduck.compound_v.effect.PowerAbsorptionEffect.clearCharge(entity.getUUID());
-            int stormfrontMax = CompoundVEffectMatrix.getMaxLevel(blueduck.compound_v.registry.EffectReg.STORMFRONT.get());
-            if (stormfrontMax < 0) stormfrontMax = 0;
-            MobEffectInstance stormfront = new MobEffectInstance(
-                    blueduck.compound_v.registry.EffectReg.STORMFRONT.get(),
-                    MobEffectInstance.INFINITE_DURATION, stormfrontMax, false, false, false);
-            stormfront.setCurativeItems(new java.util.ArrayList<>());
-            entity.addEffect(stormfront);
+
+        // Apply promotions: remove the lesser power, grant the greater one at max level.
+        for (MobEffectInstance old : toPromote) {
+            net.minecraft.world.effect.MobEffect from = old.getEffect();
+            net.minecraft.world.effect.MobEffect to = upgrades.get(from);
+            // Power Absorption needs its charge cleared when it's consumed by the upgrade.
+            if (from == blueduck.compound_v.registry.EffectReg.POWER_ABSORPTION.get()) {
+                blueduck.compound_v.effect.PowerAbsorptionEffect.clearCharge(entity.getUUID());
+            }
+            entity.removeEffect(from);
+            // Don't stack a duplicate if the target power is somehow already present.
+            if (entity.hasEffect(to)) continue;
+            int max = CompoundVEffectMatrix.getMaxLevel(to);
+            if (max < 0) max = 0;
+            MobEffectInstance granted = new MobEffectInstance(
+                    to, MobEffectInstance.INFINITE_DURATION, max, false, false, false);
+            granted.setCurativeItems(new java.util.ArrayList<>());
+            entity.addEffect(granted);
         }
+
         for (MobEffectInstance old : toUpgrade) {
             int maxLevel = CompoundVEffectMatrix.getMaxLevel(old.getEffect());
             if (maxLevel < 0) maxLevel = old.getAmplifier();

@@ -130,11 +130,20 @@ public class CompoundVItem extends Item {
             }
         }
         for (MobEffectInstance old : toLevel) {
-            int maxLevel = CompoundVEffectMatrix.getMaxLevel(old.getEffect());
+            int maxLevel;
+            if (old.getEffect() instanceof blueduck.compound_v.effect.GenericEffect) {
+                // Generic's amplifier IS the power tier (0=D … 4=S). Its level-up ceiling is the
+                // top tier (amplifier 4), NOT the matrix roll-range value — that value only bounds
+                // what tier Generic can ROLL at, and using it here would DOWNGRADE a high-tier
+                // Generic (e.g. Generic V -> III) on drink. Cap at S tier instead.
+                maxLevel = blueduck.compound_v.effect.GenericEffect.maxTierAmplifier();
+            } else {
+                maxLevel = CompoundVEffectMatrix.getMaxLevel(old.getEffect());
+            }
             int current = old.getAmplifier();
             // Unknown max (-1) or already at/over max → leave as-is (no crash, no over-level).
             int target = (maxLevel >= 0) ? Math.min(current + 1, maxLevel) : current;
-            if (target == current) continue;
+            if (target <= current) continue;
             entity.removeEffect(old.getEffect());
             MobEffectInstance leveled = new MobEffectInstance(old.getEffect(),
                     MobEffectInstance.INFINITE_DURATION, target, false, false, false);

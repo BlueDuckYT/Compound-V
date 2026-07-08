@@ -34,6 +34,7 @@ import net.minecraft.world.level.storage.loot.entries.LootPoolEntryContainer;
 import net.minecraft.world.level.storage.loot.entries.LootTableReference;
 import net.minecraftforge.event.LootTableLoadEvent;
 import net.minecraftforge.event.entity.EntityJoinLevelEvent;
+import net.minecraftforge.event.entity.living.MobEffectEvent;
 import net.minecraftforge.event.entity.ProjectileImpactEvent;
 import net.minecraftforge.event.entity.living.*;
 import net.minecraftforge.event.entity.player.PlayerEvent;
@@ -53,17 +54,70 @@ public class ForgeEvents {
     public static HashMap<Player, Boolean> wasInEnd = new HashMap<>();
     // Totem of Undying protection: saves CompoundV effects before a lethal hit
     private static final Map<UUID, java.util.List<MobEffectInstance>> totemEffectSave = new ConcurrentHashMap<>();
+    // Slimed players hit by an explosion this tick -> blast origin, used to fling them next tick.
+    private static final Map<UUID, net.minecraft.world.phys.Vec3> slimeExplosionBoost = new ConcurrentHashMap<>();
+
+    @SubscribeEvent
+    public static void onEffectExpired(MobEffectEvent.Expired event) {
+        if (event.getEffectInstance() != null
+                && event.getEffectInstance().getEffect() instanceof CompoundVEffect cv) {
+            cv.clearSecondaryEffects(event.getEntity());
+        }
+    }
+
+    @SubscribeEvent
+    public static void onEffectRemoved(MobEffectEvent.Remove event) {
+        if (event.getEffectInstance() != null
+                && event.getEffectInstance().getEffect() instanceof CompoundVEffect cv) {
+            cv.clearSecondaryEffects(event.getEntity());
+        }
+    }
 
     @SubscribeEvent
     public static void playerTickEvent(LivingEvent.LivingTickEvent event) {
         LivingEntity le = event.getEntity();
 
-        // Carried-player dismount: a player being carried (riding another player) hops down
-        // when they sneak. Pairs with the sneak+right-click pickup.
-        if (!le.level().isClientSide && le instanceof Player carried
-                && carried.isPassenger() && carried.getVehicle() instanceof Player
-                && carried.isShiftKeyDown()) {
-            carried.stopRiding();
+        // Deferred persist-on-death: powers saved at death were copied onto this (respawned)
+        // player's persistent data with an "apply" flag, because addEffect during PlayerEvent.Clone
+        // gets dropped by the respawn re-sync. Apply them here on the first tick the player is
+        // fully in the world, then clear the flag.
+        if (!le.level().isClientSide && le instanceof ServerPlayer respawned
+                && respawned.getPersistentData().getBoolean("compound_v_apply_persisted")) {
+            applyPersistedPowers(respawned);
+            respawned.getPersistentData().remove("compound_v_apply_persisted");
+        }
+
+        // Slime explosion fling: a slimed player hit by a blast last tick gets a big extra outward
+        // shove now (the explosion's own knockback has applied by this point). Slime makes you
+        // light and bouncy, so a creeper sends you flying.
+        if (!le.level().isClientSide && le instanceof Player slimeP) {
+            net.minecraft.world.phys.Vec3 origin = slimeExplosionBoost.remove(slimeP.getUUID());
+            if (origin != null && blueduck.compound_v.effect.SlimeEffect.isSlime(slimeP.getUUID())
+                    && !CompoundVEffect.arePowersSuppressed(slimeP)) {
+                net.minecraft.world.phys.Vec3 away = slimeP.position().add(0, slimeP.getBbHeight() * 0.5, 0).subtract(origin);
+                if (away.lengthSqr() < 1.0e-4) away = new net.minecraft.world.phys.Vec3(0, 1, 0);
+                away = away.normalize();
+                double power = Config.slimeExplosionKnockback;
+                // Strong outward + upward launch so they really fly.
+                slimeP.setDeltaMovement(slimeP.getDeltaMovement().add(
+                        away.x * power, Math.max(away.y * power, 0) + power * 0.5, away.z * power));
+                slimeP.hurtMarked = true;
+                slimeP.fallDistance = 0;
+            }
+        }
+
+        // Carry dismount checks. Runs on the CARRIED entity (player or mob) each tick.
+        if (!le.level().isClientSide && le.isPassenger()
+                && le.getVehicle() instanceof Player mount) {
+            // (1) A carried PLAYER hops down when they sneak.
+            if (le instanceof Player carried && carried.isShiftKeyDown()) {
+                le.stopRiding();
+            }
+            // (2) Auto-drop if the size ratio no longer holds - the carried party grew or the
+            //     carrier shrank below the threshold. Keeps the carry physically plausible.
+            else if (!carrierLargeEnough(mount, le)) {
+                le.stopRiding();
+            }
         }
 
         // Telekinesis watchdog: a held entity has its gravity suspended by the HOLDER each
@@ -124,8 +178,7 @@ public class ForgeEvents {
                 }
             }
 
-            if (player.hasEffect(EffectReg.CREATIVE_FLIGHT.get()) ||
-                    player.hasEffect(EffectReg.LASER_EYES_ADVANCED.get())) {
+            if (hasFlightPower(player)) {
                 if (!CompoundVEffect.arePowersSuppressed(player)
                         && !player.getAbilities().mayfly && !player.isCreative() && !player.isSpectator()) {
                     player.getAbilities().mayfly = true;
@@ -202,8 +255,20 @@ public class ForgeEvents {
     @SubscribeEvent
     public static void entityJoinLevel(EntityJoinLevelEvent event) {
         // Aimlock homing is handled per-tick in serverTickHoming by scanning
-        // projectiles by owner — registering at join is unreliable because a
+        // projectiles by owner - registering at join is unreliable because a
         // projectile's owner often isn't resolved yet at the join event.
+
+        // Atom Charging: stamp the projectile with its explosion power at launch, based on whether
+        // the owner has Charging active right now. The impact handler reads this tag instead of
+        // re-checking the owner, so toggling the power on/off after firing doesn't change a shot
+        // that's already in flight.
+        if (event.getEntity() instanceof net.minecraft.world.entity.projectile.Projectile proj
+                && proj.getOwner() instanceof LivingEntity owner
+                && owner.hasEffect(EffectReg.CHARGING.get())
+                && !CompoundVEffect.arePowersSuppressed(owner)) {
+            float power = (owner.getEffect(EffectReg.CHARGING.get()).getAmplifier() + 1) * 1.5f;
+            proj.getPersistentData().putFloat(CHARGED_PROJECTILE_TAG, power);
+        }
 
         if (!Config.enableMobPowers) return;
         if (!(event.getEntity() instanceof Mob mob)) return;
@@ -211,12 +276,27 @@ public class ForgeEvents {
         MobPowerManager.onMobJoinLevel(mob, level);
     }
 
+    // NBT key marking a projectile as explosive (Atom Charging), storing its explosion power. Set
+    // at launch so the explosive state is fixed at fire time, not re-evaluated on impact.
+    public static final String CHARGED_PROJECTILE_TAG = "compound_v_charged_power";
+
     @SubscribeEvent
     public static void serverTickHoming(net.minecraftforge.event.TickEvent.LevelTickEvent event) {
         if (event.phase != net.minecraftforge.event.TickEvent.Phase.END) return;
         if (event.level instanceof ServerLevel sl) {
             blueduck.compound_v.effect.AimlockEffect.tickHomingProjectiles(sl);
             MobPowerManager.tickWebClears(sl);
+
+            // Spark trail around charged (explosive) projectiles in flight.
+            for (net.minecraft.world.entity.Entity e : sl.getAllEntities()) {
+                if (e instanceof net.minecraft.world.entity.projectile.Projectile p
+                        && p.getPersistentData().contains(CHARGED_PROJECTILE_TAG)) {
+                    sl.sendParticles(net.minecraft.core.particles.ParticleTypes.ELECTRIC_SPARK,
+                            p.getX(), p.getY(), p.getZ(), 3, 0.12, 0.12, 0.12, 0.02);
+                    sl.sendParticles(net.minecraft.core.particles.ParticleTypes.CRIT,
+                            p.getX(), p.getY(), p.getZ(), 1, 0.1, 0.1, 0.1, 0.0);
+                }
+            }
         }
     }
 
@@ -245,7 +325,7 @@ public class ForgeEvents {
 
     @SubscribeEvent
     public static void mobPowerTick(LivingEvent.LivingTickEvent event) {
-        // No enableMobPowers gate here — injected mobs should always tick.
+        // No enableMobPowers gate here - injected mobs should always tick.
         // onMobTick already checks for compound_v_powered tag.
         if (!(event.getEntity() instanceof Mob mob)) return;
         if (!(mob.level() instanceof ServerLevel level)) return;
@@ -289,7 +369,7 @@ public class ForgeEvents {
                     SoundEvents.SHIELD_BLOCK, SoundSource.PLAYERS, 0.4F, 1.5F);
         }
 
-        // Cancel the raw hit entirely — the shield handled it (fully or up to the break point).
+        // Cancel the raw hit entirely - the shield handled it (fully or up to the break point).
         event.setCanceled(true);
 
         // If the shield broke, the leftover raw damage still needs to land. Re-apply it as a
@@ -303,6 +383,32 @@ public class ForgeEvents {
 
     @SubscribeEvent
     public static void entityHurtEvent(LivingHurtEvent event) {
+        // Slime: take much less damage while active, and no fall damage (you bounce instead).
+        // NOTE: the general Compound V damage-reduction loop below already multiplies in Slime's
+        // TIER damage-reduction modifier (D-tier = 0.8), since Slime is a CompoundVEffect. So we
+        // apply only the slime-specific factor here; the net is slimeDamageTaken × tierDR
+        // (e.g. 0.4 × 0.8 = takes 32% at D tier) without double-counting the tier.
+        if (event.getEntity() instanceof Player slimeP
+                && blueduck.compound_v.effect.SlimeEffect.isSlime(slimeP.getUUID())
+                && !CompoundVEffect.arePowersSuppressed(slimeP)) {
+            if (event.getSource().is(net.minecraft.world.damagesource.DamageTypes.FALL)) {
+                event.setCanceled(true);
+                return;
+            }
+            event.setAmount((float) (event.getAmount() * Config.slimeDamageTaken));
+
+            // Explosions don't go through LivingKnockBackEvent - they apply velocity directly
+            // inside the explosion code, AFTER this hurt event. So to send a slimed player flying
+            // from a creeper/TNT blast, we stamp the blast and amplify their velocity next tick,
+            // once the explosion's own knockback has been applied.
+            if (event.getSource().is(net.minecraft.tags.DamageTypeTags.IS_EXPLOSION)) {
+                net.minecraft.world.phys.Vec3 origin = event.getSource().getSourcePosition();
+                if (origin != null) {
+                    slimeExplosionBoost.put(slimeP.getUUID(), origin);
+                }
+            }
+        }
+
         // Pyrokinesis: immune to fire and lava.
         if (blueduck.compound_v.effect.PyrokinesisEffect.hasFireImmunity(event.getEntity())) {
             net.minecraft.world.damagesource.DamageSource src = event.getSource();
@@ -386,7 +492,7 @@ public class ForgeEvents {
             return;
         }
 
-        // (Forcefield absorption moved to LivingAttackEvent so it absorbs RAW pre-armor damage —
+        // (Forcefield absorption moved to LivingAttackEvent so it absorbs RAW pre-armor damage -
         //  see forcefieldRawAbsorb below.)
 
         // Defensive teleport: passive mobs with Teleport blink away when damaged
@@ -409,7 +515,7 @@ public class ForgeEvents {
         }
 
         // Spider: never takes fall damage (web-slinging means constant big drops). Checked
-        // early and with a hard return so nothing downstream can re-introduce the damage —
+        // early and with a hard return so nothing downstream can re-introduce the damage -
         // the per-effect branch below was order-dependent and could be missed.
         if (event.getSource().is(DamageTypes.FALL)
                 && event.getEntity().hasEffect(EffectReg.SPIDER.get())
@@ -496,7 +602,7 @@ public class ForgeEvents {
                         .damageReductionFactor(event.getEntity());
                 if (factor < 1.0f) event.setAmount(event.getAmount() * factor);
             }
-            // General Compound V damage reduction — use best tier across all active effects.
+            // General Compound V damage reduction - use best tier across all active effects.
             // Gated by stat suppression (virus) not power suppression, so NULLIFIED
             // holders keep their defensive stat boost.
             else if (!statsSuppressed && !event.getSource().is(DamageTypes.FELL_OUT_OF_WORLD)
@@ -525,9 +631,15 @@ public class ForgeEvents {
         // Clean up per-event DR flag so it doesn't persist to next damage event
         event.getEntity().getPersistentData().remove("compound_v_dr_applied");
 
-        // Strength multiplier for players with Compound V (melee only, best tier)
+        // Melee Strength multiplier for players with Compound V (best available tier). Two guards
+        // keep it to genuine melee: the power-damage flag excludes power damage that uses the
+        // player-attack source (lasers, blasts), and the direct entity must be the attacker itself,
+        // not a projectile. Projectiles (including gun-mod bullets) carry the projectile as the
+        // direct entity even when typed as a player attack, so they are not amplified.
         if (event.getSource().is(DamageTypes.PLAYER_ATTACK)
+                && !CompoundVEffect.isPowerDamage()
                 && event.getSource().getEntity() instanceof Player attacker
+                && event.getSource().getDirectEntity() == attacker
                 && !CompoundVEffect.areStatsSuppressed(attacker)) {
             double bestSTR = 1.0;
             for (MobEffectInstance instance : new ArrayList<>(attacker.getActiveEffects())) {
@@ -536,9 +648,21 @@ public class ForgeEvents {
                     if (str > bestSTR) bestSTR = str;
                 }
             }
-            if (bestSTR > 1.0) event.setAmount((float) (event.getAmount() * bestSTR));
+            if (bestSTR > 1.0) {
+                // The amount already includes the vanilla STRENGTH potion bonus (+3 per level).
+                // Multiplying the whole amount would let Strength potions blow up supe damage
+                // (the multiplier scaling the potion's flat bonus too). So peel off the Strength
+                // bonus, apply the supe multiplier to the rest, then add the flat bonus back -
+                // the potion stays additive, the supe multiplier scales only the real attack.
+                float strengthBonus = 0f;
+                MobEffectInstance str = attacker.getEffect(net.minecraft.world.effect.MobEffects.DAMAGE_BOOST);
+                if (str != null) strengthBonus = 3.0f * (str.getAmplifier() + 1);
+                float base = event.getAmount() - strengthBonus;
+                if (base < 0) base = 0;
+                event.setAmount((float) (base * bestSTR) + strengthBonus);
+            }
 
-            // Instakill is a POWER, not a stat — suppressed by nullify/virus
+            // Instakill is a POWER, not a stat - suppressed by nullify/virus
             if (attacker.hasEffect(EffectReg.INSTAKILL.get())
                     && !CompoundVEffect.arePowersSuppressed(attacker)
                     && event.getSource().is(DamageTypes.PLAYER_ATTACK)) {
@@ -547,24 +671,34 @@ public class ForgeEvents {
         }
         // Strength multiplier for mobs with Compound V (melee only, hostile vs friendly)
         else if (event.getSource().is(DamageTypes.MOB_ATTACK)
+                && !CompoundVEffect.isPowerDamage()
                 && event.getSource().getEntity() instanceof LivingEntity mobAttacker
+                && event.getSource().getDirectEntity() == event.getSource().getEntity()
                 && !(mobAttacker instanceof Player)
                 && !CompoundVEffect.areStatsSuppressed(mobAttacker)) {
             for (MobEffectInstance instance : new ArrayList<>(mobAttacker.getActiveEffects())) {
                 if (instance.getEffect() instanceof CompoundVEffect) {
-                    if (mobAttacker instanceof net.minecraft.world.entity.monster.Enemy) {
-                        event.setAmount((float) (event.getAmount() * Config.mobStrengthMultiplier));
-                    } else {
-                        event.setAmount((float) (event.getAmount() * Config.friendlyMobStrengthMultiplier));
-                    }
+                    double mult = (mobAttacker instanceof net.minecraft.world.entity.monster.Enemy)
+                            ? Config.mobStrengthMultiplier : Config.friendlyMobStrengthMultiplier;
+                    // Peel off the vanilla Strength bonus so the supe multiplier doesn't amplify
+                    // the potion's flat contribution; it's added back after multiplying.
+                    float strengthBonus = 0f;
+                    MobEffectInstance str = mobAttacker.getEffect(net.minecraft.world.effect.MobEffects.DAMAGE_BOOST);
+                    if (str != null) strengthBonus = 3.0f * (str.getAmplifier() + 1);
+                    float base = event.getAmount() - strengthBonus;
+                    if (base < 0) base = 0;
+                    event.setAmount((float) (base * mult) + strengthBonus);
                     break; // only apply once
                 }
             }
         }
 
-        // Berserker: damage scales with missing health (melee only)
+        // Berserker: damage scales with missing health (true melee only - direct entity is the
+        // attacker, not a projectile, so gun/arrow damage isn't amplified)
         if ((event.getSource().is(DamageTypes.PLAYER_ATTACK) || event.getSource().is(DamageTypes.MOB_ATTACK))
+                && !CompoundVEffect.isPowerDamage()
                 && event.getSource().getEntity() instanceof LivingEntity berserkerAttacker
+                && event.getSource().getDirectEntity() == berserkerAttacker
                 && berserkerAttacker.hasEffect(EffectReg.BERSERKER.get())
                 && !CompoundVEffect.arePowersSuppressed(berserkerAttacker)) {
             float multiplier = BerserkerEffect.getDamageMultiplier(berserkerAttacker);
@@ -595,6 +729,13 @@ public class ForgeEvents {
             EnhancedRegenEffect.onPlayerDamaged(player2.getUUID(), player2.serverLevel().getGameTime());
         }
 
+        if (event.getEntity() instanceof ServerPlayer healP
+                && healP.hasEffect(EffectReg.HEALING.get())
+                && event.getAmount() > 0) {
+            blueduck.compound_v.effect.HealingEffect.onPlayerDamaged(
+                    healP.getUUID(), healP.serverLevel().getGameTime());
+        }
+
         // Track damage for powered mob regen
         if (Config.enableMobPowers
                 && event.getEntity() instanceof Mob mob
@@ -613,7 +754,7 @@ public class ForgeEvents {
         if (!kbStatsSuppressed) {
             List<MobEffectInstance> effects = new ArrayList<>(event.getEntity().getActiveEffects());
             for (MobEffectInstance instance : effects) {
-                // Invincible full KB negation is a POWER — lost under nullify/virus
+                // Invincible full KB negation is a POWER - lost under nullify/virus
                 if (!kbPowersSuppressed && instance.getEffect().equals(EffectReg.INVINCIBLE.get())) {
                     event.setStrength(0);
                 }
@@ -658,11 +799,18 @@ public class ForgeEvents {
                 event.setStrength((float) (event.getStrength() * bestKBD));
             }
         }
+
+        // Slime: take VASTLY more knockback while active (the tradeoff for damage reduction).
+        if (event.getEntity() instanceof Player slimeP
+                && blueduck.compound_v.effect.SlimeEffect.isSlime(slimeP.getUUID())
+                && !CompoundVEffect.arePowersSuppressed(slimeP)) {
+            event.setStrength((float) (event.getStrength() * Config.slimeKnockbackTaken));
+        }
     }
 
     /**
      * Save CompoundV effects before a lethal hit so they survive Totem of Undying.
-     * The totem calls removeAllEffects() which wipes everything — we snapshot here
+     * The totem calls removeAllEffects() which wipes everything - we snapshot here
      * and restore on the next tick if the player is still alive.
      */
     // Guards the lifesteal heal so it isn't cancelled by our own regen-suppression.
@@ -802,15 +950,16 @@ public class ForgeEvents {
             return;
         }
 
-        // Charging: explode on projectile impact
-        if (!(event.getProjectile().getOwner() instanceof LivingEntity entity)) {
-            return;
-        }
-        if (entity.hasEffect(EffectReg.CHARGING.get()) && event.getEntity().level() instanceof ServerLevel) {
-            event.getProjectile().level().explode(entity,
-                    event.getProjectile().getBlockX(), event.getProjectile().getBlockY(), event.getProjectile().getBlockZ(),
-                    (float) (entity.getEffect(EffectReg.CHARGING.get()).getAmplifier() * 1.5),
-                    Level.ExplosionInteraction.MOB);
+        // Charging: explode on projectile impact if it was tagged explosive at launch.
+        net.minecraft.world.entity.projectile.Projectile proj = event.getProjectile();
+        if (proj.getPersistentData().contains(CHARGED_PROJECTILE_TAG)
+                && proj.level() instanceof ServerLevel) {
+            float power = proj.getPersistentData().getFloat(CHARGED_PROJECTILE_TAG);
+            net.minecraft.world.entity.LivingEntity source =
+                    (proj.getOwner() instanceof LivingEntity le) ? le : null;
+            proj.level().explode(source,
+                    proj.getX(), proj.getY(), proj.getZ(),
+                    power, Level.ExplosionInteraction.MOB);
         }
     }
 
@@ -827,8 +976,13 @@ public class ForgeEvents {
         if (Config.persistPowersOnDeath && event.getEntity() instanceof Player player) {
             net.minecraft.nbt.ListTag savedEffects = new net.minecraft.nbt.ListTag();
             for (MobEffectInstance inst : player.getActiveEffects()) {
-                if (inst.getEffect() instanceof CompoundVEffect)
-                    savedEffects.add(inst.save(new net.minecraft.nbt.CompoundTag()));
+                if (!(inst.getEffect() instanceof CompoundVEffect)) continue;
+                // Failure/negative effects (Slowness, Wither, the Uncontrolled ones, etc.) only
+                // persist when persistFailureEffectsOnDeath is enabled - off by default, so a bad
+                // roll doesn't normally follow you past death. Real powers always persist.
+                if (inst.getEffect() instanceof blueduck.compound_v.effect.negative.BadCompoundVEffect
+                        && !Config.persistFailureEffectsOnDeath) continue;
+                savedEffects.add(inst.save(new net.minecraft.nbt.CompoundTag()));
             }
             if (!savedEffects.isEmpty())
                 player.getPersistentData().put("compound_v_saved_effects", savedEffects);
@@ -836,7 +990,7 @@ public class ForgeEvents {
                 player.getPersistentData().putBoolean("compound_v_had_virus_on_death", true);
         }
 
-        // Powered mob V drops (challenge mode feature) — priority: V1 > Compound V > Temp V
+        // Powered mob V drops (challenge mode feature) - priority: V1 > Compound V > Temp V
         if (event.getEntity() instanceof Mob mob
                 && mob.getPersistentData().getBoolean("compound_v_natural")
                 && !event.getEntity().level().isClientSide()) {
@@ -876,35 +1030,22 @@ public class ForgeEvents {
             }
             oldPlayer.invalidateCaps();
 
-            // Persist powers through death if config enabled
+            // Persist powers through death if config enabled. We do NOT addEffect here directly -
+            // during Clone the new player isn't fully in the world yet and addEffect can be
+            // dropped by the respawn re-sync. Instead, copy the saved-effects NBT onto the NEW
+            // player and apply it on their first server tick (see applyPersistedPowers).
             if (Config.persistPowersOnDeath) {
                 oldPlayer.reviveCaps();
-                net.minecraft.nbt.ListTag savedEffects = oldPlayer.getPersistentData()
-                        .getList("compound_v_saved_effects", net.minecraft.nbt.Tag.TAG_COMPOUND);
-                java.util.List<net.minecraft.world.effect.MobEffect> copiedPowers = new java.util.ArrayList<>();
-                for (int i = 0; i < savedEffects.size(); i++) {
-                    MobEffectInstance loaded = MobEffectInstance.load(savedEffects.getCompound(i));
-                    if (loaded != null && loaded.getEffect() instanceof CompoundVEffect) {
-                        MobEffectInstance copy = new MobEffectInstance(loaded.getEffect(), loaded.getDuration(), loaded.getAmplifier(), false, false, false);
-                        copy.setCurativeItems(new java.util.ArrayList<>());
-                        newPlayer.addEffect(copy);
-                        copiedPowers.add(loaded.getEffect());
-                    }
+                if (oldPlayer.getPersistentData().contains("compound_v_saved_effects")) {
+                    newPlayer.getPersistentData().put("compound_v_saved_effects",
+                            oldPlayer.getPersistentData().get("compound_v_saved_effects").copy());
+                    newPlayer.getPersistentData().putBoolean("compound_v_apply_persisted", true);
+                }
+                if (oldPlayer.getPersistentData().getBoolean("compound_v_had_virus_on_death")) {
+                    newPlayer.getPersistentData().putBoolean("compound_v_had_virus_on_death", true);
                 }
                 oldPlayer.getPersistentData().remove("compound_v_saved_effects");
-                boolean hadVirus = oldPlayer.getPersistentData().getBoolean("compound_v_had_virus_on_death");
                 oldPlayer.getPersistentData().remove("compound_v_had_virus_on_death");
-                if (Config.virusRemovesPowerOnDeath && !copiedPowers.isEmpty() && hadVirus) {
-                    net.minecraft.world.effect.MobEffect toRemove = copiedPowers.get(newPlayer.getRandom().nextInt(copiedPowers.size()));
-                    newPlayer.removeEffect(toRemove);
-                }
-                // Re-grant flight if player has a flight power
-                if (newPlayer.hasEffect(EffectReg.CREATIVE_FLIGHT.get())
-                        || newPlayer.hasEffect(EffectReg.LASER_EYES_ADVANCED.get())
-                        || newPlayer.hasEffect(EffectReg.STORMFRONT.get())) {
-                    newPlayer.getAbilities().mayfly = true;
-                    newPlayer.onUpdateAbilities();
-                }
                 oldPlayer.invalidateCaps();
             }
 
@@ -918,17 +1059,74 @@ public class ForgeEvents {
     /**
      * Restore flight after crossing dimensions. Changing dimensions recreates the player's
      * ability state and re-syncs it from a fresh default, which drops the mayfly flag granted
-     * by flight powers — leaving the player unable to fly until something else re-triggers it.
+     * by flight powers - leaving the player unable to fly until something else re-triggers it.
      * We re-grant flight here for any player holding a flight-granting power.
      */
+    /**
+     * Apply Compound V powers that were saved at death and copied onto the respawned player.
+     * Reconstructs each effect (preserving infinite duration), optionally removes one random power
+     * if the player died with the virus (virusRemovesPowerOnDeath), and re-grants flight for any
+     * flight-capable power. Called from the first post-respawn tick (see playerTickEvent), because
+     * applying during PlayerEvent.Clone gets dropped by the respawn re-sync.
+     */
+    /**
+     * Whether the player has any Compound V power that grants flight. Scans active effects and
+     * asks each CompoundVEffect via its overridable canFly() hook, so ADDON MODS' flight powers
+     * are picked up automatically - they only need to override canFly() to return true, with no
+     * changes here. Centralized so the per-tick maintenance, dimension-change, and
+     * persist-on-death paths stay consistent.
+     */
+    public static boolean hasFlightPower(Player player) {
+        for (MobEffectInstance inst : player.getActiveEffects()) {
+            if (inst.getEffect() instanceof CompoundVEffect cv && cv.canFly()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void applyPersistedPowers(ServerPlayer player) {
+        net.minecraft.nbt.ListTag saved = player.getPersistentData()
+                .getList("compound_v_saved_effects", net.minecraft.nbt.Tag.TAG_COMPOUND);
+        java.util.List<net.minecraft.world.effect.MobEffect> copiedPowers = new java.util.ArrayList<>();
+        for (int i = 0; i < saved.size(); i++) {
+            MobEffectInstance loaded = MobEffectInstance.load(saved.getCompound(i));
+            if (loaded != null && loaded.getEffect() instanceof CompoundVEffect) {
+                MobEffectInstance copy = new MobEffectInstance(
+                        loaded.getEffect(), loaded.getDuration(), loaded.getAmplifier(), false, false, false);
+                copy.setCurativeItems(new java.util.ArrayList<>());
+                player.addEffect(copy);
+                copiedPowers.add(loaded.getEffect());
+            }
+        }
+        player.getPersistentData().remove("compound_v_saved_effects");
+
+        boolean hadVirus = player.getPersistentData().getBoolean("compound_v_had_virus_on_death");
+        player.getPersistentData().remove("compound_v_had_virus_on_death");
+        if (Config.virusRemovesPowerOnDeath && hadVirus && !copiedPowers.isEmpty()) {
+            net.minecraft.world.effect.MobEffect toRemove =
+                    copiedPowers.get(player.getRandom().nextInt(copiedPowers.size()));
+            player.removeEffect(toRemove);
+        }
+
+        // Re-grant flight if a flight-capable power survived.
+        if (hasFlightPower(player)) {
+            player.getAbilities().mayfly = true;
+            player.onUpdateAbilities();
+        }
+    }
+
     @SubscribeEvent
     public static void playerChangedDimension(PlayerEvent.PlayerChangedDimensionEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer player)) return;
+        // Spider: the active web from the previous dimension is gone, but its lingering id/hold
+        // state would block firing new webs until the effect was removed and reapplied. Clear it.
+        if (player.hasEffect(EffectReg.SPIDER.get())) {
+            blueduck.compound_v.effect.SpiderEffect.resetState(player.getUUID());
+        }
         if (player.isCreative() || player.isSpectator()) return;
         if (CompoundVEffect.arePowersSuppressed(player)) return;
-        if (player.hasEffect(EffectReg.CREATIVE_FLIGHT.get())
-                || player.hasEffect(EffectReg.LASER_EYES_ADVANCED.get())
-                || player.hasEffect(EffectReg.STORMFRONT.get())) {
+        if (hasFlightPower(player)) {
             if (!player.getAbilities().mayfly) {
                 player.getAbilities().mayfly = true;
                 player.onUpdateAbilities();
@@ -950,16 +1148,18 @@ public class ForgeEvents {
     }
 
     /**
-     * Big-player pickup: a sufficiently larger player can sneak + right-click a smaller player
-     * to carry them (the small player rides as a passenger). Sneak/right-click again, or the
-     * carrier sneaking, sets them down. Gated by config (enable, size ratio, and optionally
-     * requiring at least one party to have Compound V).
+     * Big-entity pickup: a sufficiently larger player can sneak + right-click a smaller PLAYER
+     * or MOB to carry them (they ride as a passenger). Sneak/right-click again, the carried
+     * party sneaking, or the size ratio no longer holding sets them down.
+     *   - Player targets: gated by playerPickupRequiresCompoundV (either party's power satisfies).
+     *   - Mob targets: the CARRIER must have Compound V (a powered giant scooping up a mob).
+     * All gated by the configured size ratio (carrier must be that much larger).
      */
     @SubscribeEvent
     public static void playerPickup(PlayerInteractEvent.EntityInteract event) {
         if (event.getLevel().isClientSide()) return;
         if (!Config.playerPickupEnabled) return;
-        if (!(event.getTarget() instanceof Player target)) return;
+        if (!(event.getTarget() instanceof LivingEntity target)) return;
         Player carrier = event.getEntity();
         if (carrier == target) return;
         if (!carrier.isShiftKeyDown()) return;
@@ -972,28 +1172,37 @@ public class ForgeEvents {
             event.setCanceled(true);
             return;
         }
-        // Don't pick up someone already riding something, or if the carrier is itself a passenger.
+        // Don't pick up something already riding something, or if the carrier is a passenger.
         if (target.isPassenger() || carrier.isPassenger()) return;
 
-        // Compound V gate: either party having a power satisfies it.
-        if (Config.playerPickupRequiresCompoundV
-                && !hasAnyCompV(carrier) && !hasAnyCompV(target)) {
-            return;
+        boolean targetIsPlayer = target instanceof Player;
+        if (targetIsPlayer) {
+            // Player target: either party having a power satisfies the (optional) CompV gate.
+            if (Config.playerPickupRequiresCompoundV
+                    && !hasAnyCompV(carrier) && !hasAnyCompV(target)) {
+                return;
+            }
+        } else {
+            // Mob target: the carrier must have Compound V to scoop up a mob.
+            if (!hasAnyCompV(carrier)) return;
         }
 
         // Size gate: carrier must be at least the configured ratio larger than the target.
+        if (!carrierLargeEnough(carrier, target)) return;
+
+        // Pick them up.
+        target.startRiding(carrier, true);
+        event.setCanceled(true);
+    }
+
+    /** True if the carrier's Pehkui scale is at least the configured ratio above the target's. */
+    private static boolean carrierLargeEnough(LivingEntity carrier, LivingEntity target) {
         float carrierScale = 1.0f, targetScale = 1.0f;
         if (net.minecraftforge.fml.ModList.get().isLoaded("pehkui")) {
             carrierScale = blueduck.compound_v.util.PehkuiHelper.getCurrentScale(carrier);
             targetScale = blueduck.compound_v.util.PehkuiHelper.getCurrentScale(target);
         }
-        if (carrierScale < targetScale * (float) Config.playerPickupSizeRatio) {
-            return; // not big enough relative to the target
-        }
-
-        // Pick them up.
-        target.startRiding(carrier, true);
-        event.setCanceled(true);
+        return carrierScale >= targetScale * (float) Config.playerPickupSizeRatio;
     }
 
     @SubscribeEvent
@@ -1051,7 +1260,7 @@ public class ForgeEvents {
 
         if (!isCompoundV && !isTempV && !isV1) return;
 
-        // Creepers excluded — vanilla creates lingering effect clouds on explosion
+        // Creepers excluded - vanilla creates lingering effect clouds on explosion
         if (target instanceof net.minecraft.world.entity.monster.Creeper) return;
 
         // Check if mob already has a Compound V effect
@@ -1192,19 +1401,6 @@ public class ForgeEvents {
         }
     }
 
-    /**
-     * Luck power: bonus XP from mining. Fortune handled by LuckFortuneModifier (GLM).
-     */
-    @SubscribeEvent
-    public static void onBlockBreak(net.minecraftforge.event.level.BlockEvent.BreakEvent event) {
-        if (event.getPlayer() != null && !CompoundVEffect.arePowersSuppressed(event.getPlayer())) {
-            int luckLevel = blueduck.compound_v.effect.LuckEffect.getLuckLevel(event.getPlayer());
-            if (luckLevel > 0) {
-                event.setExpToDrop(event.getExpToDrop() + luckLevel); // bonus XP
-            }
-        }
-    }
-
     @SubscribeEvent
     public static void lootLoad(LootTableLoadEvent event) {
         if (Config.addToBuriedTreasure && event.getName().equals(new ResourceLocation("minecraft:chests/buried_treasure"))) {
@@ -1247,7 +1443,7 @@ public class ForgeEvents {
                 addEntry(pool, getInjectEntry(new ResourceLocation("compound_v", "chests/compound_and_temp_v"), 8, 0));
             }
         }
-        // V1 — rare find in ancient cities and end cities
+        // V1 - rare find in ancient cities and end cities
         if (Config.addV1ToAncientCities && event.getName().equals(new ResourceLocation("minecraft:chests/ancient_city"))) {
             LootPool pool = event.getTable().getPool("main");
             if (pool != null) {
@@ -1283,6 +1479,8 @@ public class ForgeEvents {
                     .then(buildColorArg("compound_v_laser_color", "basic")))
                 .then(net.minecraft.commands.Commands.literal("advanced")
                     .then(buildColorArg("compound_v_adv_laser_color", "advanced")))
+                .then(net.minecraft.commands.Commands.literal("chestblast")
+                    .then(buildColorArg("compound_v_chestblast_color", "chest blast")))
         );
     }
 
@@ -1291,7 +1489,7 @@ public class ForgeEvents {
         return net.minecraft.commands.Commands.argument("color",
                 com.mojang.brigadier.arguments.StringArgumentType.word())
             .suggests((ctx, builder) -> {
-                for (String s : new String[]{"orange","blue","red","green","purple","yellow","rainbow","black","white"})
+                for (String s : new String[]{"orange","blue","red","green","purple","yellow","rainbow","black","white","gold"})
                     builder.suggest(s);
                 return builder.buildFuture();
             })
@@ -1347,6 +1545,8 @@ public class ForgeEvents {
             case "rainbow" -> S2CLaserSyncPacket.COLOR_RAINBOW;
             case "black" -> S2CLaserSyncPacket.COLOR_BLACK;
             case "white" -> S2CLaserSyncPacket.COLOR_WHITE;
+            // Default chest-blast gold/orange.
+            case "gold" -> S2CLaserSyncPacket.COLOR_CHEST_BLAST;
             default -> -1;
         };
     }

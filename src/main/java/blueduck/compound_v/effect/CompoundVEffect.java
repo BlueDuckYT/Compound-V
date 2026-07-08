@@ -33,18 +33,60 @@ public class CompoundVEffect extends MobEffect {
         boolean isPlayer = entity instanceof ServerPlayer;
         if (blueduck.compound_v.util.VirusHelper.hasVirus(entity, isPlayer)) return true;
         if (entity.hasEffect(blueduck.compound_v.registry.EffectReg.NULLIFIED.get())) return true;
+        // Alex's Caves irradiation weakens supes: while irradiated at/above the configured level,
+        // a Compound V holder's powers are suppressed (kryptonite-style). Config-gated and only
+        // when Alex's Caves is loaded.
+        if (blueduck.compound_v.Config.irradiationWeakensSupes
+                && net.minecraftforge.fml.ModList.get().isLoaded("alexscaves")) {
+            net.minecraft.world.effect.MobEffect irradiated =
+                    blueduck.compound_v.util.AlexsCavesCompat.getIrradiatedEffect();
+            if (irradiated != null) {
+                net.minecraft.world.effect.MobEffectInstance inst = entity.getEffect(irradiated);
+                if (inst != null && inst.getAmplifier() >= blueduck.compound_v.Config.irradiationWeakenMinLevel) {
+                    return true;
+                }
+            }
+        }
         return false;
     }
 
     /**
      * Stat suppression is narrower than power suppression. The NULLIFIED effect
      * disables active and passive *powers* (V-key abilities, flight, laser AI, etc.)
-     * but deliberately leaves the holder's passive *stat boosts* — strength,
-     * damage reduction, knockback — intact. Only the virus fully suppresses stats.
+     * but deliberately leaves the holder's passive *stat boosts* - strength,
+     * damage reduction, knockback - intact. Only the virus fully suppresses stats.
      */
     public static boolean areStatsSuppressed(LivingEntity entity) {
         boolean isPlayer = entity instanceof ServerPlayer;
         return blueduck.compound_v.util.VirusHelper.hasVirus(entity, isPlayer);
+    }
+
+    /**
+     * Marks damage that is dealt BY a Compound V power (laser eyes, chest blast, etc.) which uses
+     * the player-attack damage source so armor applies and kills credit the player - but which must
+     * NOT receive the melee Strength multiplier. Powers wrap their hurt() call in beginPowerDamage()
+     * / endPowerDamage(); the strength scaling in ForgeEvents checks isPowerDamage() and skips.
+     * The hurt() call (and the LivingHurtEvent it fires) is synchronous on the server thread, so a
+     * ThreadLocal flag is safe and self-contained.
+     */
+    private static final ThreadLocal<Boolean> POWER_DAMAGE = ThreadLocal.withInitial(() -> false);
+    public static void beginPowerDamage() { POWER_DAMAGE.set(true); }
+    public static void endPowerDamage() { POWER_DAMAGE.set(false); }
+    public static boolean isPowerDamage() { return POWER_DAMAGE.get(); }
+
+    /**
+     * Deal damage FROM a Compound V power, flagged so the melee Strength/Berserker scaling skips it.
+     * Use this instead of a raw target.hurt(...) for any power that uses the player-attack source
+     * (for armor + kill credit) but shouldn't be amplified as if it were a melee swing.
+     */
+    public static boolean powerHurt(net.minecraft.world.entity.LivingEntity target,
+                                    net.minecraft.world.damagesource.DamageSource source, float amount) {
+        beginPowerDamage();
+        try {
+            return target.hurt(source, amount);
+        } finally {
+            endPowerDamage();
+        }
     }
 
     public static boolean areIncompatible(net.minecraft.world.effect.MobEffect a, net.minecraft.world.effect.MobEffect b) {
@@ -83,4 +125,21 @@ public class CompoundVEffect extends MobEffect {
 
     /** Called when a scroll-aware power is active and the player scrolls. dir is +1 (up) or -1 (down). */
     public void scrollAdjust(ServerPlayer player, int amplifier, ServerLevel level, int dir) {}
+
+    /**
+     * Called when this power is lost (its effect expires or is removed). Powers that apply a
+     * SECONDARY toggleable effect (e.g. Slime's Jump Boost, Cryokinesis' frost aura, Density's
+     * slowness) must override this to clean those up, so the secondary effect doesn't linger
+     * after the power is gone. Default does nothing.
+     */
+    public void clearSecondaryEffects(LivingEntity entity) {}
+
+    /**
+     * Whether this power grants flight (creative-style mayfly). Default false. Flight-granting
+     * powers override this to return true; the core flight-maintenance logic (per-tick, on
+     * dimension change, and on persist-through-death respawn) grants/keeps mayfly for any holder
+     * of a power whose canFly() is true. Addon mods only need to override this on their own flight
+     * powers - no changes to the core mod are required for their flight to be maintained.
+     */
+    public boolean canFly() { return false; }
 }

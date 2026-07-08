@@ -34,6 +34,12 @@ import java.util.List;
 
 public class LaserEyesEffect extends CompoundVEffect {
 
+    // Progressive block breaking: accumulated break progress (0..1) per block being lasered, plus
+    // the game-time tick each was last touched so progress decays/clears when the beam moves off.
+    // Keyed by BlockPos; shared across players (a block is a block). Uses the vanilla crack overlay.
+    private static final java.util.Map<BlockPos, Float> breakProgress = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.Map<BlockPos, Long> breakLastTick = new java.util.concurrent.ConcurrentHashMap<>();
+
     protected static final DustParticleOptions LASER_CORE_ORANGE = new DustParticleOptions(
             new Vector3f(1.0f, 0.6f, 0.1f), 1.2f);
     protected static final DustParticleOptions LASER_GLOW_ORANGE = new DustParticleOptions(
@@ -168,13 +174,16 @@ public class LaserEyesEffect extends CompoundVEffect {
         long seed = player.serverLevel().getSeed();
         long hash = uuidHash * 6364136223846793005L + seed;
 
-        // Rare seeded black/white: independent 1/50 each, off separate hash slices
-        // so they're deterministic per UUID+world. Black takes precedence if both hit.
+        // Rare seeded black/white/gold: independent 1/50 each, off separate hash slices
+        // so they're deterministic per UUID+world. Black takes precedence, then white, then gold.
         if (((hash >>> 8) & 0xFFFFFFL) % 50 == 0) {
             return S2CLaserSyncPacket.COLOR_BLACK;
         }
         if (((hash >>> 32) & 0xFFFFFFL) % 50 == 0) {
             return S2CLaserSyncPacket.COLOR_WHITE;
+        }
+        if (((hash >>> 20) & 0xFFFFFFL) % 50 == 0) {
+            return S2CLaserSyncPacket.COLOR_CHEST_BLAST; // gold (shares the gold palette)
         }
 
         int bucket = (int) (((hash >>> 4) & 0xFFFFFFL) % 5);
@@ -317,6 +326,36 @@ public class LaserEyesEffect extends CompoundVEffect {
             // Hit a solid block
             hitPos = blockHit.getLocation();
             hitSolidBlock = true;
+
+            // --- Ignition (lower intensity threshold than burn-through) ---
+            // At a lower intensity the beam sets fire and primes TNT, even when it isn't hot enough
+            // to burn through the block. TNT the beam hits is primed; flammable/soft blocks are lit;
+            // otherwise fire is placed on the face the beam struck (if that space is air).
+            float igniteRamp = intensityRamp(intensity, Config.laserIgniteCriticalIntensity);
+            double igniteChance = igniteRamp * Config.laserIgniteChance;
+            if (!harmless && Config.laserIgniteEnabled && igniteChance > 0.0
+                    && level.random.nextFloat() < igniteChance) {
+                if (hitState.is(net.minecraft.world.level.block.Blocks.TNT)) {
+                    // Prime the TNT: replace with a primed TNT entity (same as flint & steel).
+                    level.removeBlock(hitBlockPos, false);
+                    net.minecraft.world.entity.item.PrimedTnt tnt = new net.minecraft.world.entity.item.PrimedTnt(
+                            level, hitBlockPos.getX() + 0.5, hitBlockPos.getY(), hitBlockPos.getZ() + 0.5, player);
+                    level.addFreshEntity(tnt);
+                    level.playSound(null, hitBlockPos, net.minecraft.sounds.SoundEvents.TNT_PRIMED,
+                            net.minecraft.sounds.SoundSource.BLOCKS, 1.0F, 1.0F);
+                } else {
+                    // Place fire on the struck face if that neighbouring space is air.
+                    BlockPos firePos = hitBlockPos.relative(blockHit.getDirection());
+                    if (level.getBlockState(firePos).isAir()) {
+                        level.setBlock(firePos,
+                                BaseFireBlock.getState(level, firePos), 11);
+                        level.sendParticles(ParticleTypes.FLAME,
+                                firePos.getX() + 0.5, firePos.getY() + 0.5, firePos.getZ() + 0.5,
+                                2, 0.2, 0.2, 0.2, 0.01);
+                    }
+                }
+            }
+
             break;
         }
 
@@ -340,35 +379,88 @@ public class LaserEyesEffect extends CompoundVEffect {
                     if (isDamageTick && !harmless) {
                         applyLaserDamage(player, target, level, intensity);
                     }
+                    // Ignite entities in the beam once intensity passes the (lower) ignite point.
+                    if (!harmless && Config.laserIgniteEnabled) {
+                        float eRamp = intensityRamp(intensity, Config.laserIgniteCriticalIntensity);
+                        if (eRamp * Config.laserIgniteChance > 0.0
+                                && level.random.nextFloat() < eRamp * Config.laserIgniteChance) {
+                            target.setSecondsOnFire(Config.laserIgniteEntitySeconds);
+                        }
+                    }
                 }
             }
         }
 
-        // --- Block breaking along beam path (if enabled) ---
+        // --- Block breaking along beam path (progressive, hardness/blast-resistance based) ---
         float breakRamp = intensityRamp(intensity, Config.laserBreakCriticalIntensity);
         boolean breakBlocks = (isAdvanced() ? Config.laserAdvancedBreakBlocks : Config.laserBasicBreakBlocks)
                 && !harmless && breakRamp > 0f;
         if (breakBlocks && isDamageTick) {
-            double breakChance = Config.laserBlockBreakChance * breakRamp; // ramps in from critical point
             boolean drops = Config.laserBlockBreakDrops;
+            long now = level.getGameTime();
+            int breakerId = player.getId();
             double step = 1.0;
-            // Extend slightly past beam end to include the hit block
             double breakRange = hitSolidBlock ? beamLength + 1.0 : beamLength;
             int steps = (int) (breakRange / step);
             for (int i = 1; i <= steps; i++) {
                 Vec3 beamPoint = eyePos.add(lookVec.scale(i * step));
                 BlockPos bPos = BlockPos.containing(beamPoint.x, beamPoint.y, beamPoint.z);
                 BlockState bState = level.getBlockState(bPos);
-                if (!bState.isAir()) {
-                    float hardness = bState.getDestroySpeed(level, bPos);
-                    if (hardness >= 0 && hardness < 50 && player.getRandom().nextDouble() < breakChance) {
-                        level.destroyBlock(bPos, drops, player);
-                        level.sendParticles(ParticleTypes.FLAME,
-                                bPos.getX() + 0.5, bPos.getY() + 0.5, bPos.getZ() + 0.5,
-                                2, 0.2, 0.2, 0.2, 0.02);
-                    }
+                if (bState.isAir()) continue;
+
+                float hardness = bState.getDestroySpeed(level, bPos);
+                if (hardness < 0) continue; // unbreakable (bedrock etc.)
+
+                // Time-to-break scales with hardness and blast resistance. Higher config modifier =
+                // faster. progressPerTick = intensity-ramped rate / (hardness-derived toughness).
+                float resistance = bState.getBlock().getExplosionResistance();
+                double toughness = Config.laserBreakHardnessWeight * hardness
+                        + Config.laserBreakResistanceWeight * resistance;
+                if (toughness < 0.05) toughness = 0.05; // instant-ish for near-zero (e.g. plants)
+                // Base rate (fraction of the block per damage tick) scaled by the beam ramp and the
+                // overall speed modifier. Divided by toughness so hard blocks take proportionally
+                // longer - this is the "time to break based on hardness" behavior.
+                double perTick = (Config.laserBreakSpeed * breakRamp) / toughness;
+
+                float prog = breakProgress.getOrDefault(bPos, 0f) + (float) perTick;
+                breakLastTick.put(bPos, now);
+
+                if (prog >= 1.0f) {
+                    // Fully mined - destroy and clear its crack overlay.
+                    level.destroyBlockProgress(breakerId, bPos, -1);
+                    breakProgress.remove(bPos);
+                    breakLastTick.remove(bPos);
+                    level.destroyBlock(bPos, drops, player);
+                    level.sendParticles(ParticleTypes.FLAME,
+                            bPos.getX() + 0.5, bPos.getY() + 0.5, bPos.getZ() + 0.5,
+                            2, 0.2, 0.2, 0.2, 0.02);
+                } else {
+                    breakProgress.put(bPos, prog);
+                    // Vanilla crack overlay: stage 0..9 across 0..1 progress.
+                    int stage = Math.min(9, (int) (prog * 10f));
+                    level.destroyBlockProgress(breakerId, bPos, stage);
+                    level.sendParticles(ParticleTypes.SMOKE,
+                            bPos.getX() + 0.5, bPos.getY() + 0.5, bPos.getZ() + 0.5,
+                            1, 0.2, 0.2, 0.2, 0.0);
                 }
             }
+
+            // Decay/clear progress on blocks the beam is no longer hitting, so partially-mined
+            // blocks recover (and their crack overlay clears) instead of staying frozen forever.
+            breakLastTick.entrySet().removeIf(e -> {
+                if (e.getValue() == now) return false;
+                BlockPos bp = e.getKey();
+                float prog = breakProgress.getOrDefault(bp, 0f) - (float) Config.laserBreakDecay;
+                if (prog <= 0f) {
+                    level.destroyBlockProgress(player.getId(), bp, -1);
+                    breakProgress.remove(bp);
+                    return true;
+                } else {
+                    breakProgress.put(bp, prog);
+                    level.destroyBlockProgress(player.getId(), bp, Math.min(9, (int) (prog * 10f)));
+                    return false;
+                }
+            });
         }
 
         // --- Fire starting ---
@@ -387,7 +479,7 @@ public class LaserEyesEffect extends CompoundVEffect {
             }
         }
 
-        // --- Impact particles --- (skip in harmless/intimidation mode — they block vision)
+        // --- Impact particles --- (skip in harmless/intimidation mode - they block vision)
         if (hitSolidBlock && !harmless) {
             level.sendParticles(ParticleTypes.FLAME,
                     hitPos.x, hitPos.y, hitPos.z, 3, 0.1, 0.1, 0.1, 0.02);
@@ -398,7 +490,7 @@ public class LaserEyesEffect extends CompoundVEffect {
         // --- Visual mode ---
         if (harmless) {
             // Intimidation mode: send the REAL hit point so the eye beams converge on the actual
-            // target (block/mob) exactly like a full laser — but flagged with a tiny intensity
+            // target (block/mob) exactly like a full laser - but flagged with a tiny intensity
             // (0.02) that tells the renderer to TRUNCATE the drawn beam to a very short length.
             // So the beams angle correctly toward what you're aiming at, but only a short glint
             // is drawn from the eyes.
@@ -417,7 +509,7 @@ public class LaserEyesEffect extends CompoundVEffect {
             spawnBeamParticles(level, eyePos, hitPos, beamLength, colorIndex);
         }
 
-        // --- Sound --- (silent in harmless/intimidation mode — no firing hum)
+        // --- Sound --- (silent in harmless/intimidation mode - no firing hum)
         if (!harmless && player.tickCount % 5 == 0) {
             level.playSound(null, player.getX(), player.getY(), player.getZ(),
                     SoundEvents.BEACON_AMBIENT, SoundSource.PLAYERS, 0.4F, 2.0F);
@@ -465,7 +557,15 @@ public class LaserEyesEffect extends CompoundVEffect {
 
         Vec3 motionBefore = target.getDeltaMovement();
         target.invulnerableTime = 0;
-        target.hurt(player.damageSources().playerAttack(player), damage);
+        // Indirect-magic source (not player-attack): still credits the player for kills, but does
+        // not match the melee gate, so the Strength/Berserker multipliers don't apply to laser
+        // damage.
+        CompoundVEffect.beginPowerDamage();
+        try {
+            target.hurt(player.damageSources().indirectMagic(player, player), damage);
+        } finally {
+            CompoundVEffect.endPowerDamage();
+        }
         target.setDeltaMovement(motionBefore);
         if (pushEnabled && pushStrength > 0) {
             target.setDeltaMovement(motionBefore.add(pushDir.scale(pushStrength)));

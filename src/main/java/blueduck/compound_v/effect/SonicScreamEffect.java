@@ -1,5 +1,6 @@
 package blueduck.compound_v.effect;
 
+import blueduck.compound_v.Config;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.level.ServerLevel;
@@ -29,8 +30,6 @@ import java.util.concurrent.ConcurrentHashMap;
 public class SonicScreamEffect extends CompoundVEffect {
 
     private static final int CHARGE_TICKS = 30;        // 1.5 seconds (ticks every tick while charging)
-    private static final int COOLDOWN_TICKS = 300;      // 15 seconds
-    private static final float DAMAGE = 10.0f;
     private static final double RANGE = 15.0;
     private static final double CONE_HALF_ANGLE = 45.0; // degrees
 
@@ -125,7 +124,7 @@ public class SonicScreamEffect extends CompoundVEffect {
         if (ticks >= CHARGE_TICKS) {
             fireScream(player, amplifier, level);
             chargingTicks.remove(uuid);
-            cooldownUntil.put(uuid, level.getGameTime() + COOLDOWN_TICKS);
+            cooldownUntil.put(uuid, level.getGameTime() + Config.sonicScreamCooldownTicks);
         }
     }
 
@@ -161,11 +160,11 @@ public class SonicScreamEffect extends CompoundVEffect {
             double dot = toTarget.normalize().dot(lookDir);
             if (dot < cosThreshold) continue;
 
-            // Sonic boom damage (bypasses armor) — halved against players
+            // Sonic boom damage (bypasses armor), with distance falloff.
             float falloff = 1.0f - (float) (dist / RANGE) * 0.4f;
-            float dmg = DAMAGE * falloff;
+            float dmg = (float) Config.sonicScreamDamage * falloff;
             if (target instanceof Player) {
-                dmg *= 0.5f;
+                dmg *= (float) Config.sonicScreamPlayerDamageMult;
             }
             target.invulnerableTime = 0;
             target.hurt(player.damageSources().sonicBoom(player), dmg);

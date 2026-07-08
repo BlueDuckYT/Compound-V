@@ -248,7 +248,7 @@ public class PyrokinesisEffect extends CompoundVEffect {
             float falloff = (float) (1.0 - dist / (radius + 0.5));
 
             target.setSecondsOnFire(fireSeconds);
-            if (peak > 0) target.hurt(player.damageSources().playerAttack(player), peak * falloff);
+            if (peak > 0) CompoundVEffect.powerHurt(target, player.damageSources().playerAttack(player), peak * falloff);
 
             Vec3 push = target.position().subtract(player.position()).normalize();
             double force = 0.8 * falloff;

@@ -36,6 +36,9 @@ public class Config {
     private static final ForgeConfigSpec.IntValue WEIGHT_DENSITY = BUILDER
             .comment("Weight of obtaining Density Manipulation when taking Compound V")
             .defineInRange("regularWeight.density", 5, 0, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.IntValue WEIGHT_SLIME = BUILDER
+            .comment("Weight of obtaining Slime when taking Compound V")
+            .defineInRange("regularWeight.slime", 4, 0, Integer.MAX_VALUE);
     private static final ForgeConfigSpec.IntValue WEIGHT_ENHANCED_REGEN = BUILDER
             .comment("Weight of obtaining Enhanced Regeneration when taking Compound V")
             .defineInRange("regularWeight.enhanced_regen", 8, 0, Integer.MAX_VALUE);
@@ -193,6 +196,9 @@ public class Config {
     private static final ForgeConfigSpec.IntValue V1_W_DENSITY = BUILDER
             .comment("V1 pool weight: Density (disabled by default)")
             .defineInRange("v1Weight.density", 0, 0, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.IntValue V1_W_SLIME = BUILDER
+            .comment("V1 pool weight: Slime (disabled by default)")
+            .defineInRange("v1Weight.slime", 0, 0, Integer.MAX_VALUE);
     private static final ForgeConfigSpec.IntValue V1_W_ENHANCED_REGEN = BUILDER
             .comment("V1 pool weight: Enhanced Regen (disabled by default)")
             .defineInRange("v1Weight.enhanced_regen", 0, 0, Integer.MAX_VALUE);
@@ -306,6 +312,10 @@ public class Config {
     private static final ForgeConfigSpec.IntValue MOB_WEIGHT_ENLARGE = BUILDER
             .comment("Universal mob-pool base weight: Enlarge (Pehkui)")
             .defineInRange("mobWeight.enlarge", 1, 0, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.IntValue MOB_WEIGHT_SIZE_CONTROL_ADVANCED = BUILDER
+            .comment("Universal mob-pool base weight: Advanced Size Control (Pehkui) - adaptive AI",
+                     "that shrinks to ambush/escape and grows to attack.")
+            .defineInRange("mobWeight.sizeControlAdvanced", 2, 0, Integer.MAX_VALUE);
     private static final ForgeConfigSpec.IntValue MOB_WEIGHT_HEALING = BUILDER
             .comment("Universal mob-pool base weight: Healing")
             .defineInRange("mobWeight.healing", 1, 0, Integer.MAX_VALUE);
@@ -318,30 +328,12 @@ public class Config {
     private static final ForgeConfigSpec.IntValue MOB_WEIGHT_LEAP = BUILDER
             .comment("Universal mob-pool base weight: Leap")
             .defineInRange("mobWeight.leap", 2, 0, Integer.MAX_VALUE);
-    private static final ForgeConfigSpec.IntValue MOB_WEIGHT_LIFESTEAL = BUILDER
-            .comment("Universal mob-pool base weight: Lifesteal")
-            .defineInRange("mobWeight.lifesteal", 1, 0, Integer.MAX_VALUE);
-    private static final ForgeConfigSpec.IntValue MOB_WEIGHT_PROJECTILE_IMMUNITY = BUILDER
-            .comment("Universal mob-pool base weight: Projectile Immunity")
-            .defineInRange("mobWeight.projectile_immunity", 1, 0, Integer.MAX_VALUE);
-    private static final ForgeConfigSpec.IntValue MOB_WEIGHT_PYROKINESIS = BUILDER
-            .comment("Universal mob-pool base weight: Pyrokinesis")
-            .defineInRange("mobWeight.pyrokinesis", 1, 0, Integer.MAX_VALUE);
-    private static final ForgeConfigSpec.IntValue MOB_WEIGHT_SHRINK = BUILDER
-            .comment("Universal mob-pool base weight: Shrink (Pehkui)")
-            .defineInRange("mobWeight.shrink", 1, 0, Integer.MAX_VALUE);
-    private static final ForgeConfigSpec.IntValue MOB_WEIGHT_SPEEDSTER = BUILDER
-            .comment("Universal mob-pool base weight: Speedster")
-            .defineInRange("mobWeight.speedster", 1, 0, Integer.MAX_VALUE);
-    private static final ForgeConfigSpec.IntValue MOB_WEIGHT_SPIDER = BUILDER
-            .comment("Universal mob-pool base weight: Spider")
-            .defineInRange("mobWeight.spider", 2, 0, Integer.MAX_VALUE);
-    private static final ForgeConfigSpec.IntValue MOB_WEIGHT_TELEPORT = BUILDER
-            .comment("Universal mob-pool base weight: Teleport")
-            .defineInRange("mobWeight.teleport", 1, 0, Integer.MAX_VALUE);
-
-
-    // --- Loot ---
+    private static final ForgeConfigSpec.IntValue MOB_WEIGHT_SLIME = BUILDER
+            .comment("Universal mob-pool base weight: Slime")
+            .defineInRange("mobWeight.slime", 2, 0, Integer.MAX_VALUE);
+    // ===================================================================
+    //  General - Loot & Structures
+    // ===================================================================
     private static final ForgeConfigSpec.BooleanValue ADD_TEMP_V_TO_BURIED_TREASURE = BUILDER
             .comment("Whether to add Temp V to Buried Treasure Chests")
             .define("add_to_buried_treasure", true);
@@ -363,29 +355,69 @@ public class Config {
     private static final ForgeConfigSpec.BooleanValue ADD_V1_TO_END_CITIES = BUILDER
             .comment("Whether to add V1 (original formula) to End City Chests")
             .define("add_v1_to_end_cities", true);
-    private static final ForgeConfigSpec.BooleanValue TEMP_V_FROM_WANDERING_TRADER = BUILDER
-            .comment("Whether the Wandering Trader can rarely sell Temp V")
-            .define("temp_v_from_trader", true);
 
-    // --- General ---
-    private static final ForgeConfigSpec.IntValue TEMP_V_DURATION = BUILDER
-            .comment("Duration (in ticks) of Temp V's effects")
-            .defineInRange("tempVDuration", 24000, 0, Integer.MAX_VALUE);
+    // ===================================================================
+    //  General - Drink / Death / Virus
+    // ===================================================================
     private static final ForgeConfigSpec.DoubleValue COMPOUND_V_BAD_EFFECT_CHANCE = BUILDER
             .comment("Chance of getting a bad outcome when taking Compound V (Setting this to 0 will disable it)")
             .defineInRange("badReactionChance", 0.1, 0, 1);
+    private static final ForgeConfigSpec.BooleanValue IRRADIATION_WEAKENS_SUPES = BUILDER
+            .comment("If true, Alex's Caves irradiation WEAKENS Compound V holders: while irradiated",
+                     "at/above irradiationWeakenMinLevel, all their powers (active + passive) are",
+                     "suppressed, kryptonite-style. Only applies when Alex's Caves is loaded.")
+            .define("irradiationWeakensSupes", false);
+    private static final ForgeConfigSpec.IntValue IRRADIATION_WEAKEN_MIN_LEVEL = BUILDER
+            .comment("Minimum Irradiated amplifier (0 = Irradiated I, 1 = II, 2 = III) required to",
+                     "suppress powers. Default 1 so ambient/low-level irradiation doesn't weaken a",
+                     "supe - only stronger external irradiation does.")
+            .defineInRange("irradiationWeakenMinLevel", 1, 0, 10);
+    private static final ForgeConfigSpec.BooleanValue LEVEL_UP_ON_DRINK = BUILDER
+            .comment("If true, drinking another permanent Compound V while already powered raises the level of your current effect(s) by 1, up to their max level.")
+            .define("levelUpOnDrink", true);
+    private static final ForgeConfigSpec.BooleanValue VIRUS_DISABLES_PLAYER_POWERS = BUILDER.define("virusDisablesPlayerPowers", true);
+    private static final ForgeConfigSpec.BooleanValue VIRUS_DISABLES_MOB_POWERS = BUILDER.define("virusDisablesMobPowers", true);
+
+    // ===================================================================
+    //  General - Multi-Power & Temp V
+    // ===================================================================
+    private static final ForgeConfigSpec.BooleanValue TEMP_V_FROM_WANDERING_TRADER = BUILDER
+            .comment("Whether the Wandering Trader can rarely sell Temp V")
+            .define("temp_v_from_trader", true);
+    private static final ForgeConfigSpec.IntValue TEMP_V_DURATION = BUILDER
+            .comment("Duration (in ticks) of Temp V's effects")
+            .defineInRange("tempVDuration", 24000, 0, Integer.MAX_VALUE);
     private static final ForgeConfigSpec.DoubleValue TEMP_V_BAD_REACTION_CHANCE = BUILDER
             .comment("Chance of getting a bad outcome when taking Temp V (0 = disabled, 0.1 = 10%)")
             .defineInRange("tempVBadReactionChance", 0.0, 0, 1);
-
-    // --- Multi-Power ---
     private static final ForgeConfigSpec.BooleanValue ENABLE_MULTI_POWERS = BUILDER.comment("Allow Compound V to grant multiple powers").define("enableMultiPowers", false);
     private static final ForgeConfigSpec.IntValue MULTI_POWER_MAX_COUNT = BUILDER.defineInRange("multiPowerMaxCount", 2, 1, 3);
     private static final ForgeConfigSpec.BooleanValue TEMP_V_ENABLE_MULTI_POWERS = BUILDER.define("tempVEnableMultiPowers", false);
     private static final ForgeConfigSpec.IntValue TEMP_V_MULTI_POWER_MAX_COUNT = BUILDER.defineInRange("tempVMultiPowerMaxCount", 2, 1, 3);
-    private static final ForgeConfigSpec.BooleanValue MOB_ENABLE_MULTI_POWERS = BUILDER.define("mobEnableMultiPowers", false);
-    private static final ForgeConfigSpec.IntValue MOB_MULTI_POWER_MAX_COUNT = BUILDER.defineInRange("mobMultiPowerMaxCount", 2, 1, 3);
-    // --- Player pickup (big player carries smaller player) ---
+
+    // ===================================================================
+    //  General - V1 Serum
+    // ===================================================================
+    private static final ForgeConfigSpec.BooleanValue V1_LEVEL_UP_MAXED = BUILDER
+            .comment("If true, using V1 on a multi-level power that is ALREADY at max level pushes it one level beyond its normal max (overcharge). Disabled by default.")
+            .define("v1LevelUpMaxed", false);
+    private static final ForgeConfigSpec.ConfigValue<java.util.List<? extends String>> V1_UPGRADE_PATHS = BUILDER
+            .comment("Power-to-power upgrades when drinking V1: drinking V1 while holding the LEFT",
+                     "power promotes it to the RIGHT power (granted at max level) instead of just",
+                     "maxing the left power's own level. Format: \"from_id->to_id\" using the effect",
+                     "registry path (no namespace = compound_v). Examples below. Remove a line to",
+                     "disable that upgrade; add lines for new ones.")
+            .defineList("v1UpgradePaths", java.util.List.of(
+                    "energy_absorption->stormfront",
+                    "shrink->size_control_advanced",
+                    "enlarge->size_control_advanced",
+                    "laser_eyes_basic->laser_eyes_advanced",
+                    "levitation->creative_flight"
+            ), o -> o instanceof String s && s.contains("->"));
+
+    // ===================================================================
+    //  General - Player Pickup / Carry
+    // ===================================================================
     private static final ForgeConfigSpec.BooleanValue PLAYER_PICKUP_ENABLED = BUILDER
             .comment("Allow a larger player to pick up a smaller player (sneak + right-click). The",
                      "smaller player rides on the carrier; sneak or right-click again to set down.")
@@ -400,132 +432,479 @@ public class Config {
                      "them up. 1.5 = carrier must be at least 50% larger. Requires Pehkui for scales to",
                      "differ; without it all players are scale 1.0 and nobody qualifies.")
             .defineInRange("playerPickupSizeRatio", 1.5, 1.0, 10.0);
-    private static final ForgeConfigSpec.BooleanValue LEVEL_UP_ON_DRINK = BUILDER
-            .comment("If true, drinking another permanent Compound V while already powered raises the level of your current effect(s) by 1, up to their max level.")
-            .define("levelUpOnDrink", true);
-    private static final ForgeConfigSpec.BooleanValue V1_LEVEL_UP_MAXED = BUILDER
-            .comment("If true, using V1 on a multi-level power that is ALREADY at max level pushes it one level beyond its normal max (overcharge). Disabled by default.")
-            .define("v1LevelUpMaxed", false);
 
-    // --- Tier System ---
-    private static final ForgeConfigSpec.ConfigValue<String> DEFAULT_POWER_TIER = BUILDER.comment("Default tier. Valid: S, A, B, C, D").define("defaultPowerTier", "C");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_GENERIC = BUILDER.define("tierOf.generic", "SPECIAL");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_STORMFRONT = BUILDER.define("tierOf.stormfront", "S");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_INSTAKILL = BUILDER.define("tierOf.instakill", "S");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_CHEST_BLAST = BUILDER.define("tierOf.chest_blast", "S");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_INVINCIBLE = BUILDER.define("tierOf.invincible", "S");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_LASER_ADVANCED = BUILDER.define("tierOf.laser_advanced", "A");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_POWER_ABSORPTION = BUILDER.define("tierOf.power_absorption", "A");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_NULLIFY = BUILDER.define("tierOf.nullify", "A");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_HEAD_POP = BUILDER.define("tierOf.head_pop", "A");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_LASER_BASIC = BUILDER.define("tierOf.laser_basic", "B");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_LEAP = BUILDER.define("tierOf.leap", "B");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_TELEPORT = BUILDER.define("tierOf.teleport", "B");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_AIMLOCK = BUILDER.define("tierOf.aimlock", "B");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_PYROKINESIS = BUILDER.define("tierOf.pyrokinesis", "A");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_CRYOKINESIS = BUILDER.define("tierOf.cryokinesis", "A");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_SPEEDSTER = BUILDER.define("tierOf.speedster", "SPECIAL");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_LIFESTEAL = BUILDER.define("tierOf.lifesteal", "B");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_TELEKINESIS = BUILDER.define("tierOf.telekinesis", "B");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_SIZE_CONTROL = BUILDER.define("tierOf.sizeControlAdvanced", "SPECIAL");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_BERSERKER = BUILDER.define("tierOf.berserker", "B");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_HEALING = BUILDER.define("tierOf.healing", "B");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_EXPLOSIVE = BUILDER.define("tierOf.explosive", "B");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_PETRIFYING_GAZE = BUILDER.define("tierOf.petrifying_gaze", "B");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_MIND_CONTROL = BUILDER.define("tierOf.mind_control", "B");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_CREATIVE_FLIGHT = BUILDER.define("tierOf.creative_flight", "C");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_ENHANCED_REGEN = BUILDER.define("tierOf.enhanced_regen", "C");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_NIGHT_VISION = BUILDER.define("tierOf.night_vision", "C");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_INVISIBILITY = BUILDER.define("tierOf.invisibility", "C");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_DEEP = BUILDER.define("tierOf.deep", "C");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_DENSITY = BUILDER.define("tierOf.density", "C");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_ENLARGE = BUILDER.define("tierOf.enlarge", "C");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_SHRINK = BUILDER.define("tierOf.shrink", "C");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_LUCK = BUILDER.define("tierOf.luck", "D");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_LEVITATION = BUILDER.define("tierOf.levitation", "D");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_MIMIC = BUILDER.define("tierOf.mimic", "D");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_SONIC_SCREAM = BUILDER.define("tierOf.sonic_scream", "D");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_PROJECTILE_IMMUNITY = BUILDER.define("tierOf.projectile_immunity", "D");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_ATOM_CHARGING = BUILDER.define("tierOf.atom_charging", "D");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_STAR_POWER = BUILDER.define("tierOf.star_power", "D");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_FORCEFIELD = BUILDER.define("tierOf.forcefield", "D");
-    private static final ForgeConfigSpec.ConfigValue<String> TIER_SPIDER = BUILDER.define("tierOf.spider", "A");
+    // ===================================================================
+    //  Laser Eyes
+    // ===================================================================
+    private static final ForgeConfigSpec.BooleanValue LASER_BASIC_PUSH_ENABLED = BUILDER.define("laserBasicPushEnabled", true);
+    private static final ForgeConfigSpec.DoubleValue LASER_BASIC_PUSH_STRENGTH = BUILDER.defineInRange("laserBasicPushStrength", 0.02, 0.0, 1.0);
+    private static final ForgeConfigSpec.DoubleValue LASER_BASIC_SHIELD_PUSH_MULTIPLIER = BUILDER.defineInRange("laserBasicShieldPushMultiplier", 3.0, 0.0, 20.0);
+    private static final ForgeConfigSpec.BooleanValue LASER_ADVANCED_PUSH_ENABLED = BUILDER.define("laserAdvancedPushEnabled", true);
+    private static final ForgeConfigSpec.DoubleValue LASER_ADVANCED_PUSH_STRENGTH = BUILDER.defineInRange("laserAdvancedPushStrength", 0.04, 0.0, 1.0);
+    private static final ForgeConfigSpec.DoubleValue LASER_ADVANCED_SHIELD_PUSH_MULTIPLIER = BUILDER.defineInRange("laserAdvancedShieldPushMultiplier", 4.0, 0.0, 20.0);
+    private static final ForgeConfigSpec.IntValue LASER_BASIC_DAMAGE_TICK_RATE = BUILDER.defineInRange("laserBasicDamageTickRate", 1, 1, 40);
+    private static final ForgeConfigSpec.BooleanValue LASER_DISABLED_WHILE_MOVING = BUILDER
+            .comment("If true, lasers will NOT fire (no damage/breaking) while the player is moving",
+                     "at a decent speed (running/sprinting) - they only show the harmless intimidation",
+                     "glow until you slow down. A drawback: you can't laser on the move. Off by default.")
+            .define("laserDisabledWhileMoving", false);
+    private static final ForgeConfigSpec.DoubleValue LASER_FIRST_PERSON_OPACITY = BUILDER
+            .comment("Opacity of YOUR OWN laser-eye beams in FIRST PERSON only (1.0 = full, 0.0 =",
+                     "invisible). Lets you make your lasers less obtrusive over your own view.",
+                     "Third person and other players' lasers are completely unaffected.")
+            .defineInRange("laserFirstPersonOpacity", 1.0, 0.0, 1.0);
+    private static final ForgeConfigSpec.BooleanValue LASER_INTIMIDATION_FIRST_PERSON = BUILDER
+            .comment("Whether the harmless intimidation GLOW (the short stub beams when the laser is",
+                     "at minimum intensity) renders in FIRST PERSON. Off by default so it doesn't",
+                     "clutter your own view; third person and other players always see it.")
+            .define("laserIntimidationFirstPerson", false);
+    private static final ForgeConfigSpec.DoubleValue LASER_MOVE_SPEED_THRESHOLD = BUILDER
+            .comment("Horizontal speed (blocks/tick) above which lasers are suppressed when",
+                     "laserDisabledWhileMoving is true. Normal walking is ~0.13, sprinting ~0.17.",
+                     "0.1 catches running but allows slow sneaking/aiming.")
+            .defineInRange("laserMoveSpeedThreshold", 0.1, 0.0, 1.0);
+    private static final ForgeConfigSpec.BooleanValue LASER_INTENSITY_ADJUSTABLE = BUILDER
+            .comment("If true, lasers can be scrolled between intimidation glow (0) and full power (1).",
+                     "If false, laser intensity control is disabled and lasers ALWAYS fire at full blast",
+                     "(scroll does nothing for lasers).")
+            .define("laserIntensityAdjustable", true);
+    private static final ForgeConfigSpec.DoubleValue LASER_INTENSITY_SCROLL_STEP = BUILDER
+            .comment("How much laser intensity (power level) changes per scroll notch while holding V.",
+                     "Intensity ranges 0.0 (harmless glow, intimidation only) to 1.0 (full damage +",
+                     "block breaking). 0.2 = five notches from off to full.")
+            .defineInRange("laserIntensityScrollStep", 0.2, 0.02, 1.0);
+    private static final ForgeConfigSpec.DoubleValue LASER_BREAK_CRITICAL = BUILDER
+            .comment("Intensity (0-1) at which laser BLOCK BREAKING begins. Below this, no breaking.",
+                     "From this point up to full intensity (1.0), the break chance is linearly",
+                     "interpolated from 0 up to the configured laserBlockBreakChance. e.g. 0.85 means",
+                     "breaking only in the top 15% of the power range, ramping in.")
+            .defineInRange("laserBreakCriticalIntensity", 0.85, 0.0, 1.0);
+    private static final ForgeConfigSpec.DoubleValue LASER_FIRE_CRITICAL = BUILDER
+            .comment("Intensity (0-1) at which laser FIRE STARTING / soft-block burn-through begins.",
+                     "Below this, no fire/burn-through. From this point to full intensity the chance is",
+                     "linearly interpolated from 0 up to the configured fire/burn chance.")
+            .defineInRange("laserFireCriticalIntensity", 0.5, 0.0, 1.0);
+    private static final ForgeConfigSpec.BooleanValue LASER_IGNITE_ENABLED = BUILDER
+            .comment("Whether the laser can start fires and prime TNT (separate from soft-block",
+                     "burn-through). Igniting happens at a lower intensity than burn-through.")
+            .define("laserIgniteEnabled", true);
+    private static final ForgeConfigSpec.DoubleValue LASER_IGNITE_CHANCE = BUILDER
+            .comment("Per-tick chance (0-1) that the laser ignites the block/entity it is hitting,",
+                     "at full intensity. Scaled down by how far intensity is above the ignite point,",
+                     "so lower intensity ignites less often. Set to 0 to disable ignition entirely",
+                     "even with laserIgniteEnabled on; lower it to make fires rare.")
+            .defineInRange("laserIgniteChance", 0.05, 0.0, 1.0);
+    private static final ForgeConfigSpec.DoubleValue LASER_IGNITE_CRITICAL = BUILDER
+            .comment("Intensity (0-1) at which the laser starts fires / ignites entities / primes",
+                     "TNT. Lower than laserFireCriticalIntensity so ignition kicks in before the",
+                     "hotter burn-through does. Chance ramps from 0 at this point to full intensity.")
+            .defineInRange("laserIgniteCriticalIntensity", 0.3, 0.0, 1.0);
+    private static final ForgeConfigSpec.IntValue LASER_IGNITE_ENTITY_SECONDS = BUILDER
+            .comment("Seconds an entity caught in the beam burns for, once ignite intensity is met.")
+            .defineInRange("laserIgniteEntitySeconds", 4, 0, 60);
+    private static final ForgeConfigSpec.IntValue LASER_ADVANCED_DAMAGE_TICK_RATE = BUILDER.defineInRange("laserAdvancedDamageTickRate", 1, 1, 40);
+    private static final ForgeConfigSpec.BooleanValue LASER_BASIC_BREAK_BLOCKS = BUILDER
+            .comment("Whether basic laser eyes break blocks along the beam (like chest blast)")
+            .define("laserBasicBreakBlocks", false);
+    private static final ForgeConfigSpec.BooleanValue LASER_ADVANCED_BREAK_BLOCKS = BUILDER
+            .comment("Whether advanced laser eyes break blocks along the beam")
+            .define("laserAdvancedBreakBlocks", true);
+    private static final ForgeConfigSpec.DoubleValue LASER_BLOCK_BREAK_CHANCE = BUILDER
+            .comment("Unused. Laser block breaking is progressive and hardness-based; see",
+                     "laserBreakSpeed and the hardness/resistance weight settings.")
+            .defineInRange("laserBlockBreakChance", 0.15, 0.0, 1.0);
+    private static final ForgeConfigSpec.DoubleValue LASER_BREAK_SPEED = BUILDER
+            .comment("Overall laser mining speed. Higher = blocks break faster. This is the top-level",
+                     "modifier: fraction of a 'toughness-1' block mined per damage tick before the",
+                     "hardness/resistance division. Raise for faster carving, lower for slower.")
+            .defineInRange("laserBreakSpeed", 0.5, 0.0, 100.0);
+    private static final ForgeConfigSpec.DoubleValue LASER_BREAK_HARDNESS_WEIGHT = BUILDER
+            .comment("How much a block's HARDNESS slows laser breaking. Time-to-break scales with",
+                     "(hardnessWeight * hardness + resistanceWeight * blastResistance). Set the",
+                     "resistance weight to 0 to make breaking depend on hardness only.")
+            .defineInRange("laserBreakHardnessWeight", 1.0, 0.0, 100.0);
+    private static final ForgeConfigSpec.DoubleValue LASER_BREAK_RESISTANCE_WEIGHT = BUILDER
+            .comment("How much a block's BLAST RESISTANCE slows laser breaking (obsidian etc. are far",
+                     "tougher by resistance than hardness). 0 = ignore resistance, break purely on",
+                     "hardness.")
+            .defineInRange("laserBreakResistanceWeight", 0.1, 0.0, 100.0);
+    private static final ForgeConfigSpec.DoubleValue LASER_BREAK_DECAY = BUILDER
+            .comment("How fast a partially-broken block RECOVERS once the beam moves off it (progress",
+                     "lost per tick). Higher = you must keep the beam steady; 0 = progress never",
+                     "decays (blocks stay cracked until finished).")
+            .defineInRange("laserBreakDecay", 0.05, 0.0, 1.0);
+    private static final ForgeConfigSpec.BooleanValue LASER_HEARTBEAT_ENABLED = BUILDER
+            .comment("Advanced Laser Eyes 'predator sense': the holder hears the heartbeat of nearby",
+                     "low-health players. Only the holder hears it (private, directional at the",
+                     "target). Players only, not mobs.")
+            .define("laserHeartbeatEnabled", true);
+    private static final ForgeConfigSpec.DoubleValue LASER_HEARTBEAT_RANGE = BUILDER
+            .comment("How close (blocks) a wounded player must be for the holder to hear their",
+                     "heartbeat. Heard through walls (predator sense).")
+            .defineInRange("laserHeartbeatRange", 24.0, 1.0, 128.0);
+    private static final ForgeConfigSpec.DoubleValue LASER_HEARTBEAT_HEALTH_THRESHOLD = BUILDER
+            .comment("Health FRACTION (0..1) at or below which a player's heartbeat becomes audible.",
+                     "0.4 = 40% health.")
+            .defineInRange("laserHeartbeatHealthThreshold", 0.4, 0.0, 1.0);
+    private static final ForgeConfigSpec.IntValue LASER_HEARTBEAT_SLOW_INTERVAL = BUILDER
+            .comment("Ticks between beats when a target is right at the health threshold (slowest).",
+                     "20 = 1s.")
+            .defineInRange("laserHeartbeatSlowInterval", 24, 1, 200);
+    private static final ForgeConfigSpec.IntValue LASER_HEARTBEAT_FAST_INTERVAL = BUILDER
+            .comment("Ticks between beats when a target is near death (fastest). The beat quickens",
+                     "from the slow interval to this as their health falls.")
+            .defineInRange("laserHeartbeatFastInterval", 8, 1, 200);
+    private static final ForgeConfigSpec.BooleanValue LASER_BLOCK_BREAK_DROPS = BUILDER
+            .comment("Whether laser block breaking drops items (false = less lag)")
+            .define("laserBlockBreakDrops", false);
+    private static final ForgeConfigSpec.BooleanValue LASER_COLOR_COMMAND_OP_ONLY = BUILDER
+            .comment("Restrict /lasercolor to operators only (even for setting your own color)")
+            .define("laserColorCommandOpOnly", true);
 
-    // Tier SP — legendary (no powers by default, custom assignable)
-    private static final ForgeConfigSpec.DoubleValue TIER_SP_DR = BUILDER.defineInRange("tierSP.damageReduction", 0.15, 0, 5);
-    private static final ForgeConfigSpec.DoubleValue TIER_SP_DR_PL = BUILDER.defineInRange("tierSP.damageReductionPerLevel", -0.03, -5, 5);
-    private static final ForgeConfigSpec.DoubleValue TIER_SP_STR = BUILDER.defineInRange("tierSP.strengthMultiplier", 3.0, 0, 50);
-    private static final ForgeConfigSpec.DoubleValue TIER_SP_STR_PL = BUILDER.defineInRange("tierSP.strengthPerLevel", 0.75, -10, 10);
-    private static final ForgeConfigSpec.DoubleValue TIER_SP_KB = BUILDER.defineInRange("tierSP.knockbackReduction", 0.15, 0, 5);
-    private static final ForgeConfigSpec.DoubleValue TIER_SP_KB_PL = BUILDER.defineInRange("tierSP.knockbackPerLevel", -0.03, -5, 5);
-    private static final ForgeConfigSpec.DoubleValue TIER_SP_KBD = BUILDER.defineInRange("tierSP.knockbackDealt", 2.5, 0, 20);
-    private static final ForgeConfigSpec.DoubleValue TIER_SP_KBD_PL = BUILDER.defineInRange("tierSP.knockbackDealtPerLevel", 0.5, -10, 10);
+    // ===================================================================
+    //  Chest Blast
+    // ===================================================================
+    private static final ForgeConfigSpec.BooleanValue CHEST_BLAST_BLOCK_BREAK_DROPS = BUILDER
+            .comment("Whether chest blast BEAM block breaking drops items (false = less lag)")
+            .define("chestBlastBlockBreakDrops", false);
+    private static final ForgeConfigSpec.BooleanValue CHEST_BLAST_NOVA_BLOCK_BREAK_DROPS = BUILDER
+            .comment("Whether the chest blast NOVA explosion drops broken blocks as items (false = less lag)")
+            .define("chestBlastNovaBlockBreakDrops", false);
+    private static final ForgeConfigSpec.BooleanValue CHEST_BLAST_NOVA_ENABLED = BUILDER
+            .comment("If true, sneak+V triggers the nova burst. If false, sneak+V fires a normal chest blast beam instead.")
+            .define("chestBlastNovaEnabled", true);
+    private static final ForgeConfigSpec.BooleanValue CHEST_BLAST_NOVA_BREAKS_BLOCKS = BUILDER
+            .comment("Whether the chest blast nova destroys blocks at all")
+            .define("chestBlastNovaBreaksBlocks", true);
+    private static final ForgeConfigSpec.DoubleValue CHEST_BLAST_NOVA_GUARANTEED_BREAK_FRACTION = BUILDER
+            .comment("Fraction (0-1) of the nova radius within which block destruction is guaranteed. Outside this, break chance falls off toward the edge.")
+            .defineInRange("chestBlastNovaGuaranteedBreakFraction", 0.5, 0.0, 1.0);
+    private static final ForgeConfigSpec.DoubleValue CHEST_BLAST_BEAM_DAMAGE = BUILDER
+            .comment("Damage per tick of the Chest Blast beam (fires 20x/sec, so 2.0 = 40 dps before armor)")
+            .defineInRange("chestBlastBeamDamage", 3.0, 0, Double.MAX_VALUE);
+    private static final ForgeConfigSpec.DoubleValue CHEST_BLAST_FORCEFIELD_DAMAGE = BUILDER
+            .comment("BONUS damage per tick dealt straight to an active Forcefield's health when the",
+                     "Chest Blast beam hits it (on top of the beam's normal damage the field absorbs).",
+                     "A forcefield BLOCKS the beam's power-strip but takes heavy damage - this makes",
+                     "chest blast collapse a shield quickly. Fires ~20x/sec.")
+            .defineInRange("chestBlastForcefieldDamage", 4.0, 0, Double.MAX_VALUE);
+    private static final ForgeConfigSpec.DoubleValue CHEST_BLAST_FORCEFIELD_KNOCKBACK = BUILDER
+            .comment("Horizontal knockback applied to a Forcefield holder hit by the Chest Blast beam.")
+            .defineInRange("chestBlastForcefieldKnockback", 0.8, 0, 10.0);
+    private static final ForgeConfigSpec.DoubleValue CHEST_BLAST_BURST_DAMAGE = BUILDER
+            .comment("Maximum damage of the initial Chest Blast explosion at point blank (falls off with distance)")
+            .defineInRange("chestBlastBurstDamage", 8.0, 0, Double.MAX_VALUE);
+    private static final ForgeConfigSpec.IntValue CHEST_BLAST_DURATION = BUILDER
+            .comment("Duration (in ticks) of the Chest Blast beam (80 = 4 seconds)")
+            .defineInRange("chestBlastDuration", 80, 20, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.IntValue CHEST_BLAST_CHARGE_TIME = BUILDER
+            .comment("Charge-up time (in ticks) before the Chest Blast fires (200 = 10 seconds)")
+            .defineInRange("chestBlastChargeTime", 200, 20, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.IntValue CHEST_BLAST_COOLDOWN = BUILDER
+            .comment("Cooldown (in ticks) after the Chest Blast ends before it can be used again (1200 = 60 seconds)")
+            .defineInRange("chestBlastCooldown", 1200, 0, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.BooleanValue CHEST_BLAST_BLOCKED_BY_WALLS = BUILDER.define("chestBlastBlockedByWalls", true);
+    private static final ForgeConfigSpec.BooleanValue CHEST_BLAST_STRIPS_POWERS = BUILDER.define("chestBlastStripsPowers", true);
+    private static final ForgeConfigSpec.BooleanValue CHEST_BLAST_SHIELD_BLOCKS_STRIP = BUILDER.define("chestBlastShieldBlocksStrip", true);
+    private static final ForgeConfigSpec.DoubleValue CHEST_BLAST_NOVA_RADIUS = BUILDER
+            .comment("Radius of the Soldier Boy nova depower/power-strip effect (sneak + V)")
+            .defineInRange("chestBlastNovaRadius", 8.0, 2.0, 32.0);
+    private static final ForgeConfigSpec.DoubleValue CHEST_BLAST_NOVA_POWER = BUILDER
+            .comment("Explosion power of the nova burst (vanilla TNT is 4.0; higher = bigger blast/damage/crater)")
+            .defineInRange("chestBlastNovaPower", 10.0, 0.0, 50.0);
+    private static final ForgeConfigSpec.DoubleValue CHEST_BLAST_NOVA_DAMAGE = BUILDER
+            .comment("Damage dealt by the nova burst to powered entities")
+            .defineInRange("chestBlastNovaDamage", 15.0, 0.0, 100.0);
+    private static final ForgeConfigSpec.DoubleValue CHEST_BLAST_NOVA_KNOCKBACK = BUILDER
+            .comment("Knockback strength of the nova burst")
+            .defineInRange("chestBlastNovaKnockback", 2.5, 0.0, 10.0);
+    private static final ForgeConfigSpec.IntValue CHEST_BLAST_NOVA_CHARGE_TIME = BUILDER
+            .comment("Charge time in ticks for nova burst (sneak + hold V). Beam and nova share the same cooldown (chestBlastCooldown).")
+            .defineInRange("chestBlastNovaChargeTime", 200, 0, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.IntValue CHEST_BLAST_RANGE = BUILDER
+            .comment("Range (in blocks) of the Chest Blast beam")
+            .defineInRange("chestBlastRange", 32, 8, 256);
+    private static final ForgeConfigSpec.DoubleValue CHEST_BLAST_BLOCK_BREAK_CHANCE = BUILDER
+            .comment("Chance per tick per block of the Chest Blast beam destroying blocks in its path (0 = disabled). WARNING: Values above 0 cause significant lag due to per-tick block iteration across the beam cone.")
+            .defineInRange("chestBlastBlockBreakChance", 0.0, 0.0, 1.0);
+    private static final ForgeConfigSpec.BooleanValue CHEST_BLAST_STRIPS_INVINCIBLE = BUILDER
+            .comment("Whether the Chest Blast beam can strip Invincibility (if false, Invincible blocks the strip)")
+            .define("chestBlastStripsInvincible", true);
 
-    // Tier S
-    private static final ForgeConfigSpec.DoubleValue TIER_S_DR = BUILDER.defineInRange("tierS.damageReduction", 0.3, 0, 5);
-    private static final ForgeConfigSpec.DoubleValue TIER_S_DR_PL = BUILDER.defineInRange("tierS.damageReductionPerLevel", -0.05, -5, 5);
-    private static final ForgeConfigSpec.DoubleValue TIER_S_STR = BUILDER.defineInRange("tierS.strengthMultiplier", 2.0, 0, 50);
-    private static final ForgeConfigSpec.DoubleValue TIER_S_STR_PL = BUILDER.defineInRange("tierS.strengthPerLevel", 0.5, -10, 10);
-    private static final ForgeConfigSpec.DoubleValue TIER_S_KB = BUILDER.defineInRange("tierS.knockbackReduction", 0.3, 0, 5);
-    private static final ForgeConfigSpec.DoubleValue TIER_S_KB_PL = BUILDER.defineInRange("tierS.knockbackPerLevel", -0.05, -5, 5);
-    private static final ForgeConfigSpec.DoubleValue TIER_S_KBD = BUILDER.defineInRange("tierS.knockbackDealt", 2.0, 0, 20);
-    private static final ForgeConfigSpec.DoubleValue TIER_S_KBD_PL = BUILDER.defineInRange("tierS.knockbackDealtPerLevel", 0.3, -10, 10);
-    private static final ForgeConfigSpec.DoubleValue TIER_A_DR = BUILDER.defineInRange("tierA.damageReduction", 0.4, 0, 5);
-    private static final ForgeConfigSpec.DoubleValue TIER_A_DR_PL = BUILDER.defineInRange("tierA.damageReductionPerLevel", -0.04, -5, 5);
-    private static final ForgeConfigSpec.DoubleValue TIER_A_STR = BUILDER.defineInRange("tierA.strengthMultiplier", 1.75, 0, 50);
-    private static final ForgeConfigSpec.DoubleValue TIER_A_STR_PL = BUILDER.defineInRange("tierA.strengthPerLevel", 0.35, -10, 10);
-    private static final ForgeConfigSpec.DoubleValue TIER_A_KB = BUILDER.defineInRange("tierA.knockbackReduction", 0.4, 0, 5);
-    private static final ForgeConfigSpec.DoubleValue TIER_A_KB_PL = BUILDER.defineInRange("tierA.knockbackPerLevel", -0.04, -5, 5);
-    private static final ForgeConfigSpec.DoubleValue TIER_A_KBD = BUILDER.defineInRange("tierA.knockbackDealt", 1.75, 0, 20);
-    private static final ForgeConfigSpec.DoubleValue TIER_A_KBD_PL = BUILDER.defineInRange("tierA.knockbackDealtPerLevel", 0.2, -10, 10);
-    private static final ForgeConfigSpec.DoubleValue TIER_B_DR = BUILDER.defineInRange("tierB.damageReduction", 0.5, 0, 5);
-    private static final ForgeConfigSpec.DoubleValue TIER_B_DR_PL = BUILDER.defineInRange("tierB.damageReductionPerLevel", -0.03, -5, 5);
-    private static final ForgeConfigSpec.DoubleValue TIER_B_STR = BUILDER.defineInRange("tierB.strengthMultiplier", 1.5, 0, 50);
-    private static final ForgeConfigSpec.DoubleValue TIER_B_STR_PL = BUILDER.defineInRange("tierB.strengthPerLevel", 0.25, -10, 10);
-    private static final ForgeConfigSpec.DoubleValue TIER_B_KB = BUILDER.defineInRange("tierB.knockbackReduction", 0.5, 0, 5);
-    private static final ForgeConfigSpec.DoubleValue TIER_B_KB_PL = BUILDER.defineInRange("tierB.knockbackPerLevel", -0.03, -5, 5);
-    private static final ForgeConfigSpec.DoubleValue TIER_B_KBD = BUILDER.defineInRange("tierB.knockbackDealt", 1.5, 0, 20);
-    private static final ForgeConfigSpec.DoubleValue TIER_B_KBD_PL = BUILDER.defineInRange("tierB.knockbackDealtPerLevel", 0.15, -10, 10);
-    private static final ForgeConfigSpec.DoubleValue TIER_C_DR = BUILDER.defineInRange("tierC.damageReduction", 0.65, 0, 5);
-    private static final ForgeConfigSpec.DoubleValue TIER_C_DR_PL = BUILDER.defineInRange("tierC.damageReductionPerLevel", -0.02, -5, 5);
-    private static final ForgeConfigSpec.DoubleValue TIER_C_STR = BUILDER.defineInRange("tierC.strengthMultiplier", 1.25, 0, 50);
-    private static final ForgeConfigSpec.DoubleValue TIER_C_STR_PL = BUILDER.defineInRange("tierC.strengthPerLevel", 0.15, -10, 10);
-    private static final ForgeConfigSpec.DoubleValue TIER_C_KB = BUILDER.defineInRange("tierC.knockbackReduction", 0.65, 0, 5);
-    private static final ForgeConfigSpec.DoubleValue TIER_C_KB_PL = BUILDER.defineInRange("tierC.knockbackPerLevel", -0.02, -5, 5);
-    private static final ForgeConfigSpec.DoubleValue TIER_C_KBD = BUILDER.defineInRange("tierC.knockbackDealt", 1.25, 0, 20);
-    private static final ForgeConfigSpec.DoubleValue TIER_C_KBD_PL = BUILDER.defineInRange("tierC.knockbackDealtPerLevel", 0.1, -10, 10);
-    private static final ForgeConfigSpec.DoubleValue TIER_D_DR = BUILDER.defineInRange("tierD.damageReduction", 0.8, 0, 5);
-    private static final ForgeConfigSpec.DoubleValue TIER_D_DR_PL = BUILDER.defineInRange("tierD.damageReductionPerLevel", -0.01, -5, 5);
-    private static final ForgeConfigSpec.DoubleValue TIER_D_STR = BUILDER.defineInRange("tierD.strengthMultiplier", 1.1, 0, 50);
-    private static final ForgeConfigSpec.DoubleValue TIER_D_STR_PL = BUILDER.defineInRange("tierD.strengthPerLevel", 0.05, -10, 10);
-    private static final ForgeConfigSpec.DoubleValue TIER_D_KB = BUILDER.defineInRange("tierD.knockbackReduction", 0.8, 0, 5);
-    private static final ForgeConfigSpec.DoubleValue TIER_D_KB_PL = BUILDER.defineInRange("tierD.knockbackPerLevel", -0.01, -5, 5);
-    private static final ForgeConfigSpec.DoubleValue TIER_D_KBD = BUILDER.defineInRange("tierD.knockbackDealt", 1.1, 0, 20);
-    private static final ForgeConfigSpec.DoubleValue TIER_D_KBD_PL = BUILDER.defineInRange("tierD.knockbackDealtPerLevel", 0.05, -10, 10);
+    // ===================================================================
+    //  Spider
+    // ===================================================================
+    // private static final ForgeConfigSpec.IntValue WEIGHT_FORCEFIELD = ...
+    // --- Spider web tuning (revamp) ---
+    private static final ForgeConfigSpec.DoubleValue SPIDER_WEB_SPEED = BUILDER
+            .comment("Launch speed of the web projectile").defineInRange("spiderWebSpeed", 3.6, 0.5, 12.0);
+    private static final ForgeConfigSpec.BooleanValue SPIDER_WALL_CLIMB_ENABLED = BUILDER
+            .comment("Hold SNEAK while a Spider holder is against a wall or beneath a ceiling to",
+                     "cling and climb (gravity cancelled; WASD/look move you along the surface).",
+                     "Release sneak to drop with your momentum intact.")
+            .define("spiderWallClimbEnabled", true);
+    private static final ForgeConfigSpec.DoubleValue SPIDER_CLIMB_SPEED = BUILDER
+            .comment("Movement speed while wall/ceiling climbing (blocks per tick).")
+            .defineInRange("spiderClimbSpeed", 0.18, 0.02, 1.0);
+    private static final ForgeConfigSpec.DoubleValue SPIDER_CLIMB_STICK_GAP = BUILDER
+            .comment("How close (blocks) the player's hitbox must be to a wall/ceiling face to",
+                     "cling to it. Small = must be right up against it; larger = sticks from a small",
+                     "gap (also smooths going around convex corners). 0.12 is snug.")
+            .defineInRange("spiderClimbStickGap", 0.2, 0.0, 0.5);
+    private static final ForgeConfigSpec.DoubleValue SPIDER_REEL_GROUND_LIFT = BUILDER
+            .comment("Minimum upward velocity applied when reeling toward an anchor ABOVE you while",
+                     "standing on the ground, so the reel can actually lift you off the floor",
+                     "instead of being cancelled by ground friction. ~0.42 clears a jump's worth.")
+            .defineInRange("spiderReelGroundLift", 0.42, 0.0, 3.0);
+    private static final ForgeConfigSpec.BooleanValue SPIDER_CLIMB_LOOK_RELATIVE = BUILDER
+            .comment("If true, wall climbing is directional/look-relative: W/S move along the way",
+                     "you're looking on the wall and A/D perpendicular, so you climb diagonally in",
+                     "the direction you aim. If false, axis-locked (W straight up, A/D flat sideways).")
+            .define("spiderClimbLookRelative", true);
+    private static final ForgeConfigSpec.BooleanValue SPIDER_CEILING_CLIMB_ENABLED = BUILDER
+            .comment("Whether Spider holders can cling to and crawl across CEILINGS (separate from",
+                     "wall climbing). Disabled for now while the ceiling crawl is being reworked.")
+            .define("spiderCeilingClimbEnabled", false);
+    private static final ForgeConfigSpec.BooleanValue SPIDER_WALL_JUMP_ENABLED = BUILDER
+            .comment("Press the JUMP key while wall/ceiling climbing to launch off in your look",
+                     "direction (momentum-carrying wall jump). Reuses space - no extra keybind.")
+            .define("spiderWallJumpEnabled", true);
+    private static final ForgeConfigSpec.DoubleValue SPIDER_WALL_JUMP_POWER = BUILDER
+            .comment("Launch speed of a wall jump along your look direction.")
+            .defineInRange("spiderWallJumpPower", 0.9, 0.1, 5.0);
+    private static final ForgeConfigSpec.DoubleValue SPIDER_WALL_JUMP_LIFT = BUILDER
+            .comment("Guaranteed upward boost added to every wall jump so it always pops off.")
+            .defineInRange("spiderWallJumpLift", 0.42, 0.0, 3.0);
+    private static final ForgeConfigSpec.BooleanValue SPIDER_RAYCAST_WEBBING = BUILDER
+            .comment("If true, webbing uses an instant RAYCAST instead of a traveling projectile:",
+                     "firing immediately anchors to the first block or mob along your look vector",
+                     "(no projectile travel time, can't be dodged or miss due to your movement).",
+                     "If false (default), the original projectile web is used. Note: the projectile",
+                     "is what lets thrown webs arc and be dodged by mobs, so raycast mode is more of",
+                     "a precise grappling style.")
+            .define("spiderRaycastWebbing", false);
+    private static final ForgeConfigSpec.DoubleValue SPIDER_WEB_FALL_COMPENSATION = BUILDER
+            .comment("How much of the player's downward fall speed is added back into the web's",
+                     "upward launch, so you can still hit ceilings while falling (the projectile",
+                     "otherwise ignores your motion and barely climbs as you drop). 1.0 = fully",
+                     "cancel your fall (web leaves you at full speed regardless of fall), 0 = off.")
+            .defineInRange("spiderWebFallCompensation", 1.0, 0.0, 2.0);
+    private static final ForgeConfigSpec.IntValue SPIDER_FIRE_COOLDOWN = BUILDER
+            .comment("Minimum ticks between web shots (20 = 1s). Prevents spamming webs by holding V.").defineInRange("spiderFireCooldown", 10, 0, 200);
+    private static final ForgeConfigSpec.IntValue SPIDER_MOB_WEB_STUCK_MAX_TICKS = BUILDER
+            .comment("How long (ticks, 20 = 1s) a MOB-fired web may stay stuck before it self-",
+                     "cleans. Mob webs have no release/reel controls, so without this a mob web that",
+                     "sticks to a block or the player draws a strand forever. Player webs are exempt.")
+            .defineInRange("spiderMobWebStuckMaxTicks", 200, 20, 12000);
+    private static final ForgeConfigSpec.DoubleValue SPIDER_MOB_WEB_TRAP_CHANCE = BUILDER
+            .comment("Chance per eligible check that a Spider-power mob springs its cobweb TRAP",
+                     "(ensnaring the target in temporary cobwebs) when off cooldown and in range.",
+                     "Low by default so it's a rare surprise, not a constant lockdown. 0 disables it.")
+            .defineInRange("spiderMobWebTrapChance", 0.05, 0.0, 1.0);
+    private static final ForgeConfigSpec.IntValue SPIDER_MOB_WEB_TRAP_COOLDOWN = BUILDER
+            .comment("Minimum ticks (20 = 1s) between cobweb-trap attempts for a Spider mob. Higher =",
+                     "rarer. Default 700 (~35s).")
+            .defineInRange("spiderMobWebTrapCooldown", 700, 20, 24000);
+    private static final ForgeConfigSpec.DoubleValue SPIDER_MIN_ROPE = BUILDER
+            .comment("Shortest the swing rope can be reeled to").defineInRange("spiderMinRope", 3.0, 1.0, 32.0);
+    private static final ForgeConfigSpec.DoubleValue SPIDER_MAX_ROPE = BUILDER
+            .comment("Longest the swing rope can be extended to").defineInRange("spiderMaxRope", 40.0, 4.0, 128.0);
+    private static final ForgeConfigSpec.DoubleValue SPIDER_REEL_STEP = BUILDER
+            .comment("How much rope length changes per scroll notch").defineInRange("spiderReelStep", 0.5, 0.1, 16.0);
+    private static final ForgeConfigSpec.DoubleValue SPIDER_REEL_PULL = BUILDER
+            .comment("Inward pull strength when reeling the rope shorter").defineInRange("spiderReelPull", 0.18, 0.0, 2.0);
+    private static final ForgeConfigSpec.BooleanValue SPIDER_REEL_MASS_ENABLED = BUILDER
+            .comment("If true, heavier latched mobs (by health + size) reel in more slowly. If",
+                     "false, all mobs reel at the same rate (mass resistance off). Default off",
+                     "while the reel feel is being tuned.")
+            .define("spiderReelMassEnabled", false);
+    private static final ForgeConfigSpec.DoubleValue SPIDER_MOB_REEL_SPRING = BUILDER
+            .comment("Spring strength pulling a latched mob back to the rope length (divided by the",
+                     "mob's mass). Lower = gentler, more gradual reel.")
+            .defineInRange("spiderMobReelSpring", 0.15, 0.0, 1.0);
+    private static final ForgeConfigSpec.DoubleValue SPIDER_MOB_REEL_MAX_SPEED = BUILDER
+            .comment("Cap on how fast (blocks/tick) a latched mob is reeled inward, so even a big",
+                     "rope-length change reels in smoothly instead of near-instantly.")
+            .defineInRange("spiderMobReelMaxSpeed", 0.4, 0.05, 3.0);
+    private static final ForgeConfigSpec.DoubleValue SPIDER_REEL_HEALTH_WEIGHT = BUILDER
+            .comment("How much a latched mob's MAX HEALTH adds to its reel 'mass' (heavier = reels",
+                     "in slower). Mass = 1 + maxHealth*this + sizeVolume*sizeWeight. 0 = health ignored.")
+            .defineInRange("spiderReelHealthWeight", 0.05, 0.0, 10.0);
+    private static final ForgeConfigSpec.DoubleValue SPIDER_REEL_SIZE_WEIGHT = BUILDER
+            .comment("How much a latched mob's hitbox VOLUME (×Pehkui scale cubed) adds to its reel",
+                     "'mass'. Bigger mobs reel in slower. 0 = size ignored.")
+            .defineInRange("spiderReelSizeWeight", 0.4, 0.0, 10.0);
+    private static final ForgeConfigSpec.DoubleValue SPIDER_REEL_MAX_MASS = BUILDER
+            .comment("Cap on reel 'mass' so even the heaviest mob stays haulable (reel pull is",
+                     "divided by mass). Higher = heavy mobs can get much harder to reel.")
+            .defineInRange("spiderReelMaxMass", 8.0, 1.0, 100.0);
+    private static final ForgeConfigSpec.DoubleValue SPIDER_SWING_CONTROL = BUILDER
+            .comment("How strongly A/D leans the swing left/right. Keep SMALL - it's a lean, not",
+                     "full directional control, and should never overpower gravity.").defineInRange("spiderSwingControl", 0.03, 0.0, 0.5);
+    private static final ForgeConfigSpec.BooleanValue SPIDER_SWING_JUMP_ENABLED = BUILDER
+            .comment("Press JUMP while swinging on a rope to release and launch off, keeping your",
+                     "swing momentum plus an upward boost. Reuses space - no extra keybind.")
+            .define("spiderSwingJumpEnabled", true);
+    private static final ForgeConfigSpec.IntValue SPIDER_SWING_JUMP_GROUND_GRACE = BUILDER
+            .comment("Ticks you must be airborne before a JUMP press counts as a swing-jump (rope",
+                     "release + launch). This stops a jump made while standing on the ground from",
+                     "cutting your web - instead the line stays tethered so you hop off the floor",
+                     "INTO a swing on your existing line. 3 = ~0.15s.")
+            .defineInRange("spiderSwingJumpGroundGrace", 3, 0, 40);
+    private static final ForgeConfigSpec.BooleanValue SPIDER_SWING_JUMP_REFIRES = BUILDER
+            .comment("If true, jumping off a rope with space ALSO immediately fires a new web at",
+                     "whatever you're looking at, so you flow straight into the next swing (easy",
+                     "web-to-web ceiling traversal). If false, a rope jump just releases.")
+            .define("spiderSwingJumpRefires", true);
+    private static final ForgeConfigSpec.DoubleValue SPIDER_SWING_JUMP_MOMENTUM = BUILDER
+            .comment("How much of your current swing velocity carries into the launch. 1.0 = keep",
+                     "all of it, >1 = amplified launch, <1 = dampened.")
+            .defineInRange("spiderSwingJumpMomentum", 1.1, 0.0, 3.0);
+    private static final ForgeConfigSpec.DoubleValue SPIDER_SWING_JUMP_LIFT = BUILDER
+            .comment("Guaranteed upward boost added to a rope jump so it always pops up, on top of",
+                     "any upward momentum from the swing. ~0.42 is a vanilla jump's worth.")
+            .defineInRange("spiderSwingJumpLift", 0.42, 0.0, 3.0);
+    private static final ForgeConfigSpec.DoubleValue SPIDER_SWING_PUMP = BUILDER
+            .comment("Momentum gained per tick by 'pumping' the swing: hold W to push along your",
+                     "current swing direction and build speed (like pumping your legs), S to slow.",
+                     "You must actively pump to go fast - hanging passively just gravity-swings.",
+                     "Compounds with the swing, bounded by maxSwingSpeed. 0.04 is a steady build.")
+            .defineInRange("spiderSwingPump", 0.04, 0.0, 0.5);
+    private static final ForgeConfigSpec.DoubleValue SPIDER_SWING_GRAVITY = BUILDER
+            .comment("Gravity applied to the pendulum swing each tick - the PRIMARY driver of the",
+                     "swing, building momentum through the arc. ~0.06 feels weighty; vanilla fall",
+                     "gravity is ~0.08.")
+            .defineInRange("spiderSwingGravity", 0.06, 0.0, 0.3);
+    private static final ForgeConfigSpec.DoubleValue SPIDER_WEB_GRAVITY_MULT = BUILDER
+            .comment("Multiplier on the web projectile's gravity while in flight. Lower = the web",
+                     "arcs less and flies straighter/farther. 1.0 = original, 0.9 = slightly floatier.")
+            .defineInRange("spiderWebGravityMult", 0.9, 0.0, 2.0);
+    private static final ForgeConfigSpec.DoubleValue SPIDER_MAX_SWING_SPEED = BUILDER
+            .comment("Maximum swing speed (caps momentum)").defineInRange("spiderMaxSwingSpeed", 2.6, 0.2, 6.0);
+    private static final ForgeConfigSpec.DoubleValue SPIDER_SWING_BOOST = BUILDER
+            .comment("Per-tick amplification of the along-the-arc (tangential) swing speed, so",
+                     "swings build real momentum instead of just coasting on gravity. Keep this",
+                     "SMALL (it compounds each tick) - 1.04 = +4%/tick, bounded by maxSwingSpeed.",
+                     "1.0 = no boost (pure pendulum).")
+            .defineInRange("spiderSwingBoost", 1.04, 1.0, 1.5);
+    private static final ForgeConfigSpec.DoubleValue SPIDER_FLING_FORCE = BUILDER
+            .comment("Launch force when flinging a reeled-in mob by punching it and releasing the web.")
+            .defineInRange("spiderFlingForce", 2.5, 0.5, 10.0);
+    private static final ForgeConfigSpec.DoubleValue SPIDER_FLING_DAMAGE = BUILDER
+            .comment("Bonus damage dealt to a mob flung by the punch-and-release combo.")
+            .defineInRange("spiderFlingDamage", 6.0, 0.0, 100.0);
+    private static final ForgeConfigSpec.DoubleValue SPIDER_SLAM_PITCH_THRESHOLD = BUILDER
+            .comment("Look pitch (degrees down) above which a punch on a reeled mob SLAMS it into",
+                     "the ground instead of flinging it forward. 35 = looking moderately down.")
+            .defineInRange("spiderSlamPitchThreshold", 35.0, 0.0, 90.0);
+    private static final ForgeConfigSpec.DoubleValue SPIDER_SLAM_FORCE = BUILDER
+            .comment("Downward velocity applied to a slammed mob.")
+            .defineInRange("spiderSlamForce", 2.2, 0.5, 10.0);
+    private static final ForgeConfigSpec.DoubleValue SPIDER_SLAM_DAMAGE = BUILDER
+            .comment("Damage dealt by a web slam (typically higher than a fling).")
+            .defineInRange("spiderSlamDamage", 9.0, 0.0, 100.0);
+    private static final ForgeConfigSpec.BooleanValue SPIDER_SENSE_ENABLED = BUILDER
+            .comment("Enable Spider-Sense: a passive danger warning (tingle) for Spider holders.")
+            .define("spiderSenseEnabled", true);
+    private static final ForgeConfigSpec.DoubleValue SPIDER_SENSE_RADIUS = BUILDER
+            .comment("Radius (blocks) scanned for threats by Spider-Sense.")
+            .defineInRange("spiderSenseRadius", 16.0, 4.0, 64.0);
+    private static final ForgeConfigSpec.IntValue SPIDER_SENSE_SCAN_INTERVAL = BUILDER
+            .comment("Ticks between Spider-Sense threat scans (lower = more responsive, costlier).")
+            .defineInRange("spiderSenseScanInterval", 5, 1, 40);
+    private static final ForgeConfigSpec.BooleanValue SPIDER_SENSE_DETECT_PROJECTILES = BUILDER
+            .comment("Spider-Sense warns about incoming projectiles aimed at you.")
+            .define("spiderSenseDetectProjectiles", true);
+    private static final ForgeConfigSpec.BooleanValue SPIDER_SENSE_DETECT_AGGRO = BUILDER
+            .comment("Spider-Sense warns about hostile mobs targeting you.")
+            .define("spiderSenseDetectAggro", true);
+    private static final ForgeConfigSpec.BooleanValue SPIDER_SENSE_DETECT_CREEPERS = BUILDER
+            .comment("Spider-Sense warns about primed (fusing) creepers nearby.")
+            .define("spiderSenseDetectCreepers", true);
+    private static final ForgeConfigSpec.BooleanValue SPIDER_SENSE_DODGE_PAYOFF = BUILDER
+            .comment("If true, reacting to a Spider-Sense warning grants brief damage reduction.")
+            .define("spiderSenseDodgePayoff", true);
+    private static final ForgeConfigSpec.DoubleValue SPIDER_SENSE_DR = BUILDER
+            .comment("Damage taken multiplier during the Spider-Sense reaction window (0.6 = 40% reduction).")
+            .defineInRange("spiderSenseDamageMultiplier", 0.6, 0.0, 1.0);
+    private static final ForgeConfigSpec.IntValue SPIDER_SENSE_WINDOW = BUILDER
+            .comment("Ticks the Spider-Sense reaction (damage-reduction) window lasts after a warning.")
+            .defineInRange("spiderSenseWindowTicks", 12, 1, 100);
+    private static final ForgeConfigSpec.IntValue SPIDER_SENSE_COOLDOWN = BUILDER
+            .comment("Minimum ticks between Spider-Sense warning cues (prevents tingle spam).")
+            .defineInRange("spiderSenseCooldownTicks", 16, 0, 200);
 
-    // --- Combat ---
+    // ===================================================================
+    //  Slime
+    // ===================================================================
+    private static final ForgeConfigSpec.DoubleValue SLIME_BOUNCE_FACTOR = BUILDER
+            .comment("How much landing impact velocity is converted into an upward bounce while",
+                     "Slime is active. 0.8 = bounce back at 80% of impact speed.")
+            .defineInRange("slimeBounceFactor", 0.8, 0.0, 2.0);
+    private static final ForgeConfigSpec.DoubleValue SLIME_MAX_BOUNCE = BUILDER
+            .comment("Cap on bounce-up speed so huge falls don't launch you absurdly far.")
+            .defineInRange("slimeMaxBounce", 1.4, 0.0, 10.0);
+    private static final ForgeConfigSpec.DoubleValue SLIME_BOUNCE_MIN_IMPACT = BUILDER
+            .comment("Minimum downward speed on landing (blocks/tick) needed to bounce. ~0.4",
+                     "corresponds to falling more than ~1 block; shorter drops don't bounce.")
+            .defineInRange("slimeBounceMinImpact", 0.4, 0.0, 2.0);
+    private static final ForgeConfigSpec.IntValue SLIME_JUMP_AMPLIFIER = BUILDER
+            .comment("Jump Boost amplifier while Slime is active (higher amplitude hops). 0 = JBI,",
+                     "3 = much higher. Slime can't walk, so this is your main way to move.")
+            .defineInRange("slimeJumpAmplifier", 3, 0, 10);
+    private static final ForgeConfigSpec.IntValue SLIME_JUMP_DURATION = BUILDER
+            .comment("Duration (ticks) of each Jump Boost application. Short and continuously",
+                     "refreshed (like Speedster) so the boost is punchy, not lingering. 15 = 0.75s.")
+            .defineInRange("slimeJumpDuration", 15, 2, 200);
+    private static final ForgeConfigSpec.DoubleValue SLIME_HOP_SPEED = BUILDER
+            .comment("Horizontal launch speed applied when you jump with a movement key held, so",
+                     "jump-only movement actually carries you (you hop in the input direction).")
+            .defineInRange("slimeHopSpeed", 0.55, 0.0, 3.0);
+    private static final ForgeConfigSpec.BooleanValue SLIME_ALWAYS_ACTIVE = BUILDER
+            .comment("If true, Slime mode is ALWAYS on while you hold the power - no V toggle needed,",
+                     "and V can't turn it off. If false (default), Slime is toggled on/off with V.")
+            .define("slimeAlwaysActive", false);
+    private static final ForgeConfigSpec.DoubleValue SLIME_DAMAGE_TAKEN = BUILDER
+            .comment("Damage multiplier taken while Slime is active (you're squishy and absorb",
+                     "blows). 0.4 = take 40% damage.")
+            .defineInRange("slimeDamageTaken", 0.4, 0.0, 1.0);
+    private static final ForgeConfigSpec.DoubleValue SLIME_KNOCKBACK_TAKEN = BUILDER
+            .comment("Knockback multiplier taken from melee/projectile hits while Slime is active",
+                     "(you get flung far). 6.0 = six times normal knockback.")
+            .defineInRange("slimeKnockbackTaken", 6.0, 1.0, 30.0);
+    private static final ForgeConfigSpec.DoubleValue SLIME_EXPLOSION_KNOCKBACK = BUILDER
+            .comment("Extra outward launch velocity applied to a slimed player hit by an EXPLOSION",
+                     "(creeper, TNT). Explosions bypass the normal knockback event, so this is a",
+                     "direct velocity shove on top of the blast's own knockback. ~2.5 sends you",
+                     "flying; raise for absurd launches.")
+            .defineInRange("slimeExplosionKnockback", 2.5, 0.0, 10.0);
 
-    // --- Effect Weights ---
+    // ===================================================================
+    //  Speedster
+    // ===================================================================
     private static final ForgeConfigSpec.BooleanValue SPEEDSTER_SPEED_ATTACK = BUILDER
             .comment("Whether Speedster powers allow you to damage mobs while sprinting")
             .define("speedster_speed_attack", true);
     private static final ForgeConfigSpec.IntValue SPEEDSTER_SPEED_LEVELS_PER_AMP = BUILDER
             .comment("Speed effect levels added per Speedster amplifier (base Speed III at amp 0, +N per amp)")
             .defineInRange("speedsterSpeedLevelsPerAmp", 2, 0, 10);
-    // --- Aimlock ---
-    private static final ForgeConfigSpec.DoubleValue AIMLOCK_RANGE = BUILDER
-            .comment("Maximum range (in blocks) at which Aimlock can lock onto a target")
-            .defineInRange("aimlockRange", 96.0, 1.0, 512.0);
-    private static final ForgeConfigSpec.DoubleValue AIMLOCK_HOMING_STRENGTH = BUILDER
-            .comment("How aggressively homing projectiles turn toward the locked target each tick (0 = none, 1 = instant snap)")
-            .defineInRange("aimlockHomingStrength", 0.25, 0.0, 1.0);
-    private static final ForgeConfigSpec.IntValue TELEPORT_RANGE = BUILDER
-            .comment("Range of the teleportation power")
-            .defineInRange("teleport_range", 36, 0, Integer.MAX_VALUE);
-    private static final ForgeConfigSpec.IntValue TELEPORT_COOLDOWN = BUILDER
-            .comment("Cooldown in ticks after teleporting (0 = no cooldown)")
-            .defineInRange("teleportCooldown", 0, 0, Integer.MAX_VALUE);
-    // --- Pyrokinesis (Fire) ---
+    private static final ForgeConfigSpec.DoubleValue SPEEDSTER_SPRINT_DAMAGE = BUILDER
+            .comment("Base contact damage dealt to nearby entities while sprinting (Speedster level",
+                     ">1). NOTE: this can apply every tick while sprinting through a mob, so small",
+                     "values add up fast.")
+            .defineInRange("speedsterSprintDamage", 2.0, 0.0, 100.0);
+    private static final ForgeConfigSpec.DoubleValue SPEEDSTER_SPRINT_DAMAGE_PER_AMP = BUILDER
+            .comment("Extra sprint contact damage per Speedster amplifier level above 1.",
+                     "Total = speedsterSprintDamage + this * (amplifier - 1).")
+            .defineInRange("speedsterSprintDamagePerAmp", 1.5, 0.0, 100.0);
+    private static final ForgeConfigSpec.DoubleValue SPEEDSTER_PLAYER_DAMAGE_MULT = BUILDER
+            .comment("Multiplier on Speedster sprint contact damage when the target is a PLAYER",
+                     "(1.0 = same as mobs, 0.5 = half). Lets you soften PvP without nerfing PvE.")
+            .defineInRange("speedsterPlayerDamageMult", 0.5, 0.0, 1.0);
+
+    // ===================================================================
+    //  Pyrokinesis
+    // ===================================================================
     private static final ForgeConfigSpec.IntValue PYRO_MAX_CHARGES = BUILDER
             .comment("Maximum number of fireballs a Pyrokinesis user can have stored")
             .defineInRange("pyroMaxCharges", 3, 1, 64);
@@ -567,75 +946,10 @@ public class Config {
     private static final ForgeConfigSpec.IntValue PYRO_FLAME_WAVE_COOLDOWN = BUILDER
             .comment("Cooldown in ticks for the flame wave")
             .defineInRange("pyroFlameWaveCooldown", 50, 0, Integer.MAX_VALUE);
-    // --- Cryokinesis (Ice) ---
-    // --- Lifesteal ---
-    private static final ForgeConfigSpec.ConfigValue<java.util.List<? extends Double>> LIFESTEAL_LEVEL_FRACTIONS = BUILDER
-            .comment("Fraction of melee damage healed at each Lifesteal level (level 1 = first entry, level 2 = second, ...).",
-                     "The number of entries determines how many levels Lifesteal has. Default: 0.2, 0.4, 0.6 (20%, 40%, 60%).")
-            .defineList("lifestealLevelFractions",
-                    java.util.Arrays.asList(0.2, 0.4, 0.6),
-                    o -> o instanceof Double d && d >= 0.0 && d <= 5.0);
-    private static final ForgeConfigSpec.BooleanValue LIFESTEAL_BLOCKS_ALL_HEALING = BUILDER
-            .comment("If true, Lifesteal blocks ALL other healing (potions, golden apples, regen) so dealing melee damage is the ONLY way to heal. If false (default), only natural hunger-regen is blocked.")
-            .define("lifestealBlocksAllHealing", false);
-    private static final ForgeConfigSpec.BooleanValue LIFESTEAL_MOBS = BUILDER
-            .comment("Allow mobs to spawn with Lifesteal (they heal when they hit you)")
-            .define("mobPowerLifesteal", true);
-    // --- Telekinesis ---
-    private static final ForgeConfigSpec.DoubleValue TELEKINESIS_RANGE = BUILDER
-            .comment("Max distance at which Telekinesis can grab an entity you look at")
-            .defineInRange("telekinesisRange", 48.0, 1.0, 256.0);
-    private static final ForgeConfigSpec.DoubleValue TELEKINESIS_HOLD_DISTANCE = BUILDER
-            .comment("How far in front of you a telekinetically-held entity floats")
-            .defineInRange("telekinesisHoldDistance", 4.0, 1.0, 32.0);
-    private static final ForgeConfigSpec.DoubleValue TELEKINESIS_HOLD_STRENGTH = BUILDER
-            .comment("Spring strength steering a held entity toward the hold point (higher = snappier tracking)")
-            .defineInRange("telekinesisHoldStrength", 0.4, 0.05, 2.0);
-    private static final ForgeConfigSpec.DoubleValue TELEKINESIS_LAUNCH_FORCE = BUILDER
-            .comment("Velocity applied when launching a held entity on release")
-            .defineInRange("telekinesisLaunchForce", 2.5, 0.0, 20.0);
-    private static final ForgeConfigSpec.DoubleValue TELEKINESIS_LAUNCH_RANGE = BUILDER
-            .comment("A held entity is only launched (with force/damage) if it has been reeled within this distance of the player. Released harmlessly if farther — prevents damaging far-off mobs by spam-tapping. Should be slightly more than telekinesisHoldDistance.")
-            .defineInRange("telekinesisLaunchRange", 5.0, 1.0, 32.0);
-    private static final ForgeConfigSpec.DoubleValue TELEKINESIS_LAUNCH_DAMAGE = BUILDER
-            .comment("Damage dealt to a launched entity (0 = none)")
-            .defineInRange("telekinesisLaunchDamage", 4.0, 0.0, 100.0);
-    private static final ForgeConfigSpec.BooleanValue TELEKINESIS_GRABS_PLAYERS = BUILDER
-            .comment("Whether Telekinesis can grab and launch other players")
-            .define("telekinesisGrabsPlayers", true);
-    private static final ForgeConfigSpec.DoubleValue TELEKINESIS_SCROLL_MIN = BUILDER
-            .comment("Minimum hold distance reachable by scrolling the wheel while holding an entity")
-            .defineInRange("telekinesisScrollMinDistance", 2.0, 1.0, 64.0);
-    private static final ForgeConfigSpec.DoubleValue TELEKINESIS_SCROLL_MAX = BUILDER
-            .comment("Maximum hold distance reachable by scrolling the wheel while holding an entity")
-            .defineInRange("telekinesisScrollMaxDistance", 32.0, 1.0, 256.0);
-    // --- Negative effects (new) ---
-    private static final ForgeConfigSpec.DoubleValue UNCONTROLLED_EXPLOSION_POWER = BUILDER
-            .comment("Explosion power when an Uncontrolled victim detonates (TNT = 4.0)").defineInRange("uncontrolledExplosionPower", 6.0, 0.0, 50.0);
-    private static final ForgeConfigSpec.BooleanValue UNCONTROLLED_EXPLOSION_BREAKS_BLOCKS = BUILDER
-            .comment("Whether the Uncontrolled detonation destroys blocks").define("uncontrolledExplosionBreaksBlocks", true);
-    private static final ForgeConfigSpec.IntValue WITHER_AMPLIFIER = BUILDER
-            .comment("Wither amplifier inflicted by Wither (0 = Wither I)").defineInRange("witherAmplifier", 3, 0, 10);
-    private static final ForgeConfigSpec.IntValue UNCONTROLLED_SIZE_INTERVAL_MIN = BUILDER
-            .comment("Minimum ticks between random size changes for Uncontrolled Size (20 = 1s)")
-            .defineInRange("uncontrolledSizeIntervalMinTicks", 60, 20, Integer.MAX_VALUE);
-    private static final ForgeConfigSpec.IntValue UNCONTROLLED_SIZE_INTERVAL_MAX = BUILDER
-            .comment("Maximum ticks between random size changes for Uncontrolled Size (1200 = 60s). Each wait is randomized between min and max, so changes are irregular and can be a minute or more apart.")
-            .defineInRange("uncontrolledSizeIntervalMaxTicks", 1400, 20, Integer.MAX_VALUE);
-    private static final ForgeConfigSpec.DoubleValue UNCONTROLLED_SIZE_MIN = BUILDER
-            .comment("Smallest random scale for Uncontrolled Size").defineInRange("uncontrolledSizeMinScale", 0.3, 0.05, 1.0);
-    private static final ForgeConfigSpec.DoubleValue UNCONTROLLED_SIZE_MAX = BUILDER
-            .comment("Largest random scale for Uncontrolled Size").defineInRange("uncontrolledSizeMaxScale", 2.5, 1.0, 8.0);
-    // --- Size Control (Advanced) ---
-    private static final ForgeConfigSpec.DoubleValue SIZE_CONTROL_SCROLL_STEP = BUILDER
-            .comment("How much the size changes per scroll notch")
-            .defineInRange("sizeControlScrollStep", 0.15, 0.01, 2.0);
-    private static final ForgeConfigSpec.DoubleValue SIZE_CONTROL_MIN_SCALE = BUILDER
-            .comment("Smallest size reachable with Size Control")
-            .defineInRange("sizeControlMinScale", 0.25, 0.05, 1.0);
-    private static final ForgeConfigSpec.DoubleValue SIZE_CONTROL_MAX_SCALE = BUILDER
-            .comment("Largest size reachable with Size Control")
-            .defineInRange("sizeControlMaxScale", 4.0, 1.0, 8.0);
+
+    // ===================================================================
+    //  Cryokinesis
+    // ===================================================================
     private static final ForgeConfigSpec.IntValue CRYO_MAX_CHARGES = BUILDER
             .comment("Maximum number of ice balls a Cryokinesis user can have stored")
             .defineInRange("cryoMaxCharges", 3, 1, 64);
@@ -711,13 +1025,36 @@ public class Config {
     private static final ForgeConfigSpec.BooleanValue CRYO_AURA_FREEZES_WATER = BUILDER
             .comment("Whether the frost aura freezes water beneath the caster (Frost Walker style)")
             .define("cryoAuraFreezesWater", true);
-    // --- Forcefield ---
+
+    // ===================================================================
+    //  Stormfront
+    // ===================================================================
+    private static final ForgeConfigSpec.IntValue STORMFRONT_LIGHTNING_COOLDOWN = BUILDER
+            .comment("Cooldown (in ticks) between Stormfront lightning strikes (60 = 3 seconds)")
+            .defineInRange("stormfrontLightningCooldown", 8, 0, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.DoubleValue STORMFRONT_DISCHARGE_DAMAGE = BUILDER.defineInRange("stormfrontDischargeDamage", 1.6, 0.0, 50.0);
+    private static final ForgeConfigSpec.DoubleValue STORMFRONT_DISCHARGE_RADIUS = BUILDER.defineInRange("stormfrontDischargeRadius", 6.0, 1.0, 32.0);
+    private static final ForgeConfigSpec.IntValue STORMFRONT_DISCHARGE_TICK_RATE = BUILDER.defineInRange("stormfrontDischargeTickRate", 4, 1, 40);
+    private static final ForgeConfigSpec.DoubleValue STORMFRONT_CHAIN_DAMAGE = BUILDER.comment("Damage of the first chain-lightning hit").defineInRange("stormfrontChainDamage", 7.0, 0.0, 100.0);
+    private static final ForgeConfigSpec.DoubleValue STORMFRONT_CHAIN_FALLOFF = BUILDER.comment("Damage multiplier applied per additional chain jump (0-1)").defineInRange("stormfrontChainFalloff", 0.8, 0.0, 1.0);
+    private static final ForgeConfigSpec.IntValue STORMFRONT_CHAIN_MAX_JUMPS = BUILDER.comment("Maximum number of mobs a chain-lightning bolt arcs through").defineInRange("stormfrontChainMaxJumps", 5, 1, 32);
+    private static final ForgeConfigSpec.DoubleValue STORMFRONT_CHAIN_JUMP_RANGE = BUILDER.comment("Max distance the bolt can arc from one mob to the next").defineInRange("stormfrontChainJumpRange", 8.0, 1.0, 32.0);
+    private static final ForgeConfigSpec.DoubleValue STORMFRONT_CHAIN_AIM_RANGE = BUILDER.comment("Max distance to acquire the initial chain-lightning target in your view direction").defineInRange("stormfrontChainAimRange", 8.0, 1.0, 128.0);
+
+    // ===================================================================
+    //  Forcefield
+    // ===================================================================
     private static final ForgeConfigSpec.DoubleValue FORCEFIELD_MAX_HP = BUILDER
             .comment("Maximum forcefield shield health")
             .defineInRange("forcefieldMaxHp", 100.0, 1.0, 10000.0);
     private static final ForgeConfigSpec.DoubleValue FORCEFIELD_REGEN_PER_TICK = BUILDER
             .comment("Forcefield shield health regenerated per tick (heals even while disabled)")
             .defineInRange("forcefieldRegenPerTick", 0.1, 0.0, 1000.0);
+    private static final ForgeConfigSpec.IntValue FORCEFIELD_REGEN_LOCKOUT_TICKS = BUILDER
+            .comment("Ticks the forcefield must go WITHOUT taking a hit before it resumes healing.",
+                     "Taking damage pauses regen for this long (20 ticks = 1s). 80 = 4 seconds.",
+                     "0 disables the lockout (heals immediately as before).")
+            .defineInRange("forcefieldRegenLockoutTicks", 80, 0, Integer.MAX_VALUE);
     private static final ForgeConfigSpec.DoubleValue FORCEFIELD_DAMAGE_MULTIPLIER = BUILDER
             .comment("Multiplier applied to incoming damage when draining the shield (higher = shield drains faster)")
             .defineInRange("forcefieldDamageMultiplier", 1.75, 0.0, 100.0);
@@ -741,88 +1078,116 @@ public class Config {
                      "drawback of projecting a shield). 0 = Slowness I, 1 = Slowness II, etc. Set to",
                      "-1 to disable the slowdown entirely.")
             .defineInRange("forcefieldActiveSlowness", 1, -1, 10);
-    // --- Nullify ---
+
+    // ===================================================================
+    //  Telekinesis
+    // ===================================================================
+    private static final ForgeConfigSpec.DoubleValue TELEKINESIS_RANGE = BUILDER
+            .comment("Max distance at which Telekinesis can grab an entity you look at")
+            .defineInRange("telekinesisRange", 48.0, 1.0, 256.0);
+    private static final ForgeConfigSpec.DoubleValue TELEKINESIS_HOLD_DISTANCE = BUILDER
+            .comment("How far in front of you a telekinetically-held entity floats")
+            .defineInRange("telekinesisHoldDistance", 4.0, 1.0, 32.0);
+    private static final ForgeConfigSpec.DoubleValue TELEKINESIS_HOLD_STRENGTH = BUILDER
+            .comment("Spring strength steering a held entity toward the hold point (higher = snappier tracking)")
+            .defineInRange("telekinesisHoldStrength", 0.4, 0.05, 2.0);
+    private static final ForgeConfigSpec.DoubleValue TELEKINESIS_LAUNCH_FORCE = BUILDER
+            .comment("Velocity applied when launching a held entity on release")
+            .defineInRange("telekinesisLaunchForce", 2.5, 0.0, 20.0);
+    private static final ForgeConfigSpec.DoubleValue TELEKINESIS_LAUNCH_RANGE = BUILDER
+            .comment("A held entity is only launched (with force/damage) if it has been reeled within this distance of the player. Released harmlessly if farther - prevents damaging far-off mobs by spam-tapping. Should be slightly more than telekinesisHoldDistance.")
+            .defineInRange("telekinesisLaunchRange", 5.0, 1.0, 32.0);
+    private static final ForgeConfigSpec.DoubleValue TELEKINESIS_LAUNCH_DAMAGE = BUILDER
+            .comment("Damage dealt to a launched entity (0 = none)")
+            .defineInRange("telekinesisLaunchDamage", 4.0, 0.0, 100.0);
+    private static final ForgeConfigSpec.BooleanValue TELEKINESIS_GRABS_PLAYERS = BUILDER
+            .comment("Whether Telekinesis can grab and launch other players")
+            .define("telekinesisGrabsPlayers", true);
+    private static final ForgeConfigSpec.DoubleValue TELEKINESIS_SCROLL_MIN = BUILDER
+            .comment("Minimum hold distance reachable by scrolling the wheel while holding an entity")
+            .defineInRange("telekinesisScrollMinDistance", 2.0, 1.0, 64.0);
+    private static final ForgeConfigSpec.DoubleValue TELEKINESIS_SCROLL_MAX = BUILDER
+            .comment("Maximum hold distance reachable by scrolling the wheel while holding an entity")
+            .defineInRange("telekinesisScrollMaxDistance", 32.0, 1.0, 256.0);
+
+    // ===================================================================
+    //  Size Control
+    // ===================================================================
+    private static final ForgeConfigSpec.DoubleValue SIZE_CONTROL_SCROLL_STEP = BUILDER
+            .comment("How much the size changes per scroll notch")
+            .defineInRange("sizeControlScrollStep", 0.15, 0.01, 2.0);
+    private static final ForgeConfigSpec.DoubleValue SIZE_CONTROL_MIN_SCALE = BUILDER
+            .comment("Smallest size reachable with Size Control")
+            .defineInRange("sizeControlMinScale", 0.25, 0.05, 1.0);
+    private static final ForgeConfigSpec.DoubleValue SIZE_CONTROL_MAX_SCALE = BUILDER
+            .comment("Largest size reachable with Size Control")
+            .defineInRange("sizeControlMaxScale", 4.0, 1.0, 8.0);
+
+    // ===================================================================
+    //  Power Absorption
+    // ===================================================================
+    private static final ForgeConfigSpec.DoubleValue POWERPLEX_DISCHARGE_DAMAGE = BUILDER.defineInRange("powerplexDischargeDamage", 2.0, 0.0, 50.0);
+    private static final ForgeConfigSpec.DoubleValue POWERPLEX_DISCHARGE_RADIUS = BUILDER.defineInRange("powerplexDischargeRadius", 5.0, 1.0, 32.0);
+    private static final ForgeConfigSpec.IntValue POWERPLEX_DISCHARGE_TICK_RATE = BUILDER.defineInRange("powerplexDischargeTickRate", 4, 1, 40);
+    private static final ForgeConfigSpec.DoubleValue POWERPLEX_FOCUS_DAMAGE = BUILDER
+            .comment("Damage per discharge tick when channeling Power Absorption into a SINGLE mob",
+                     "you're looking at (hold V, no crouch). Scaled by current charge. Much higher",
+                     "than the AOE discharge so it melts one target quickly.")
+            .defineInRange("powerplexFocusDamage", 8.0, 0.0, 100.0);
+    private static final ForgeConfigSpec.DoubleValue POWERPLEX_FOCUS_RANGE = BUILDER
+            .comment("Max range (blocks) to acquire the single focused target.")
+            .defineInRange("powerplexFocusRange", 12.0, 1.0, 48.0);
+
+    // ===================================================================
+    //  Lifesteal
+    // ===================================================================
+    private static final ForgeConfigSpec.ConfigValue<java.util.List<? extends Double>> LIFESTEAL_LEVEL_FRACTIONS = BUILDER
+            .comment("Fraction of melee damage healed at each Lifesteal level (level 1 = first entry, level 2 = second, ...).",
+                     "The number of entries determines how many levels Lifesteal has. Default: 0.2, 0.4, 0.6 (20%, 40%, 60%).")
+            .defineList("lifestealLevelFractions",
+                    java.util.Arrays.asList(0.2, 0.4, 0.6),
+                    o -> o instanceof Double d && d >= 0.0 && d <= 5.0);
+    private static final ForgeConfigSpec.BooleanValue LIFESTEAL_BLOCKS_ALL_HEALING = BUILDER
+            .comment("If true, Lifesteal blocks ALL other healing (potions, golden apples, regen) so dealing melee damage is the ONLY way to heal. If false (default), only natural hunger-regen is blocked.")
+            .define("lifestealBlocksAllHealing", false);
+
+    // ===================================================================
+    //  Aimlock
+    // ===================================================================
+    private static final ForgeConfigSpec.DoubleValue AIMLOCK_RANGE = BUILDER
+            .comment("Maximum range (in blocks) at which Aimlock can lock onto a target")
+            .defineInRange("aimlockRange", 96.0, 1.0, 512.0);
+    private static final ForgeConfigSpec.DoubleValue AIMLOCK_HOMING_STRENGTH = BUILDER
+            .comment("How aggressively homing projectiles turn toward the locked target each tick (0 = none, 1 = instant snap)")
+            .defineInRange("aimlockHomingStrength", 0.25, 0.0, 1.0);
+
+    // ===================================================================
+    //  Nullify
+    // ===================================================================
     private static final ForgeConfigSpec.DoubleValue NULLIFY_RADIUS = BUILDER
             .comment("Radius (in blocks) of the nullification aura")
             .defineInRange("nullifyRadius", 10.0, 1.0, 64.0);
-    // --- Laser Pushback ---
-    private static final ForgeConfigSpec.BooleanValue LASER_BASIC_PUSH_ENABLED = BUILDER.define("laserBasicPushEnabled", true);
-    private static final ForgeConfigSpec.DoubleValue LASER_BASIC_PUSH_STRENGTH = BUILDER.defineInRange("laserBasicPushStrength", 0.02, 0.0, 1.0);
-    private static final ForgeConfigSpec.DoubleValue LASER_BASIC_SHIELD_PUSH_MULTIPLIER = BUILDER.defineInRange("laserBasicShieldPushMultiplier", 3.0, 0.0, 20.0);
-    private static final ForgeConfigSpec.BooleanValue LASER_ADVANCED_PUSH_ENABLED = BUILDER.define("laserAdvancedPushEnabled", true);
-    private static final ForgeConfigSpec.DoubleValue LASER_ADVANCED_PUSH_STRENGTH = BUILDER.defineInRange("laserAdvancedPushStrength", 0.04, 0.0, 1.0);
-    private static final ForgeConfigSpec.DoubleValue LASER_ADVANCED_SHIELD_PUSH_MULTIPLIER = BUILDER.defineInRange("laserAdvancedShieldPushMultiplier", 4.0, 0.0, 20.0);
-    private static final ForgeConfigSpec.IntValue LASER_BASIC_DAMAGE_TICK_RATE = BUILDER.defineInRange("laserBasicDamageTickRate", 1, 1, 40);
-    private static final ForgeConfigSpec.BooleanValue LASER_DISABLED_WHILE_MOVING = BUILDER
-            .comment("If true, lasers will NOT fire (no damage/breaking) while the player is moving",
-                     "at a decent speed (running/sprinting) — they only show the harmless intimidation",
-                     "glow until you slow down. A drawback: you can't laser on the move. Off by default.")
-            .define("laserDisabledWhileMoving", false);
-    private static final ForgeConfigSpec.DoubleValue LASER_MOVE_SPEED_THRESHOLD = BUILDER
-            .comment("Horizontal speed (blocks/tick) above which lasers are suppressed when",
-                     "laserDisabledWhileMoving is true. Normal walking is ~0.13, sprinting ~0.17.",
-                     "0.1 catches running but allows slow sneaking/aiming.")
-            .defineInRange("laserMoveSpeedThreshold", 0.1, 0.0, 1.0);
-    private static final ForgeConfigSpec.BooleanValue LASER_INTENSITY_ADJUSTABLE = BUILDER
-            .comment("If true, lasers can be scrolled between intimidation glow (0) and full power (1).",
-                     "If false, laser intensity control is disabled and lasers ALWAYS fire at full blast",
-                     "(scroll does nothing for lasers).")
-            .define("laserIntensityAdjustable", true);
-    private static final ForgeConfigSpec.DoubleValue LASER_INTENSITY_SCROLL_STEP = BUILDER
-            .comment("How much laser intensity (power level) changes per scroll notch while holding V.",
-                     "Intensity ranges 0.0 (harmless glow, intimidation only) to 1.0 (full damage +",
-                     "block breaking). 0.2 = five notches from off to full.")
-            .defineInRange("laserIntensityScrollStep", 0.2, 0.02, 1.0);
-    private static final ForgeConfigSpec.DoubleValue LASER_BREAK_CRITICAL = BUILDER
-            .comment("Intensity (0-1) at which laser BLOCK BREAKING begins. Below this, no breaking.",
-                     "From this point up to full intensity (1.0), the break chance is linearly",
-                     "interpolated from 0 up to the configured laserBlockBreakChance. e.g. 0.85 means",
-                     "breaking only in the top 15% of the power range, ramping in.")
-            .defineInRange("laserBreakCriticalIntensity", 0.85, 0.0, 1.0);
-    private static final ForgeConfigSpec.DoubleValue LASER_FIRE_CRITICAL = BUILDER
-            .comment("Intensity (0-1) at which laser FIRE STARTING / soft-block burn-through begins.",
-                     "Below this, no fire/burn-through. From this point to full intensity the chance is",
-                     "linearly interpolated from 0 up to the configured fire/burn chance.")
-            .defineInRange("laserFireCriticalIntensity", 0.5, 0.0, 1.0);
-    private static final ForgeConfigSpec.IntValue LASER_ADVANCED_DAMAGE_TICK_RATE = BUILDER.defineInRange("laserAdvancedDamageTickRate", 1, 1, 40);
-    // --- Laser Block Breaking ---
-    private static final ForgeConfigSpec.BooleanValue LASER_BASIC_BREAK_BLOCKS = BUILDER
-            .comment("Whether basic laser eyes break blocks along the beam (like chest blast)")
-            .define("laserBasicBreakBlocks", false);
-    private static final ForgeConfigSpec.BooleanValue LASER_ADVANCED_BREAK_BLOCKS = BUILDER
-            .comment("Whether advanced laser eyes break blocks along the beam")
-            .define("laserAdvancedBreakBlocks", true);
-    private static final ForgeConfigSpec.DoubleValue LASER_BLOCK_BREAK_CHANCE = BUILDER
-            .comment("Chance per block per tick for laser block breaking (lower = slower carving)")
-            .defineInRange("laserBlockBreakChance", 0.15, 0.0, 1.0);
-    private static final ForgeConfigSpec.BooleanValue LASER_BLOCK_BREAK_DROPS = BUILDER
-            .comment("Whether laser block breaking drops items (false = less lag)")
-            .define("laserBlockBreakDrops", false);
-    private static final ForgeConfigSpec.BooleanValue CHEST_BLAST_BLOCK_BREAK_DROPS = BUILDER
-            .comment("Whether chest blast BEAM block breaking drops items (false = less lag)")
-            .define("chestBlastBlockBreakDrops", false);
-    private static final ForgeConfigSpec.BooleanValue CHEST_BLAST_NOVA_BLOCK_BREAK_DROPS = BUILDER
-            .comment("Whether the chest blast NOVA explosion drops broken blocks as items (false = less lag)")
-            .define("chestBlastNovaBlockBreakDrops", false);
-    private static final ForgeConfigSpec.BooleanValue CHEST_BLAST_NOVA_ENABLED = BUILDER
-            .comment("If true, sneak+V triggers the nova burst. If false, sneak+V fires a normal chest blast beam instead.")
-            .define("chestBlastNovaEnabled", true);
-    private static final ForgeConfigSpec.BooleanValue CHEST_BLAST_NOVA_BREAKS_BLOCKS = BUILDER
-            .comment("Whether the chest blast nova destroys blocks at all")
-            .define("chestBlastNovaBreaksBlocks", true);
-    private static final ForgeConfigSpec.DoubleValue CHEST_BLAST_NOVA_GUARANTEED_BREAK_FRACTION = BUILDER
-            .comment("Fraction (0-1) of the nova radius within which block destruction is guaranteed. Outside this, break chance falls off toward the edge.")
-            .defineInRange("chestBlastNovaGuaranteedBreakFraction", 0.5, 0.0, 1.0);
-    // --- Commands ---
-    private static final ForgeConfigSpec.BooleanValue LASER_COLOR_COMMAND_OP_ONLY = BUILDER
-            .comment("Restrict /lasercolor to operators only (even for setting your own color)")
-            .define("laserColorCommandOpOnly", true);
 
-    // --- New Powers ---
+    // ===================================================================
+    //  Other Powers
+    // ===================================================================
+    private static final ForgeConfigSpec.DoubleValue HEALING_SELF_PER_TICK = BUILDER
+            .comment("Self-heal rate (HP per tick) when sneak+holding V with the Healing power.",
+                     "Slower than healing a target you look at. 0.2 = ~4 HP/sec.")
+            .defineInRange("healingSelfPerTick", 0.2, 0.0, 20.0);
+    private static final ForgeConfigSpec.IntValue HEALING_SELF_DELAY_TICKS = BUILDER
+            .comment("Ticks the Healing user must go WITHOUT taking damage before self-heal starts",
+                     "(20 = 1s). Default 50 (~2.5s), so you can't top yourself off mid-fight.")
+            .defineInRange("healingSelfDelayTicks", 50, 0, 600);
+    private static final ForgeConfigSpec.IntValue TELEPORT_RANGE = BUILDER
+            .comment("Range of the teleportation power")
+            .defineInRange("teleport_range", 36, 0, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.IntValue TELEPORT_COOLDOWN = BUILDER
+            .comment("Cooldown in ticks after teleporting (0 = no cooldown)")
+            .defineInRange("teleportCooldown", 0, 0, Integer.MAX_VALUE);
     private static final ForgeConfigSpec.DoubleValue DENSITY_DAMAGE_REDUCTION = BUILDER
             .comment("Damage multiplier when in Dense state (lower = more tanky)")
             .defineInRange("densityDamageMultiplier", 0.5, 0, 1);
-
     private static final ForgeConfigSpec.BooleanValue STAR_POWER_UNLIMITED = BUILDER
             .comment("If true, Star Power has no cooldown and can be toggled on/off at will")
             .define("starPowerUnlimited", false);
@@ -847,69 +1212,64 @@ public class Config {
     private static final ForgeConfigSpec.BooleanValue PETRIFYING_GAZE_AFFECTS_PLAYERS = BUILDER
             .comment("Whether Petrifying Gaze can freeze other players")
             .define("petrifyingGazeAffectsPlayers", true);
-    private static final ForgeConfigSpec.IntValue STORMFRONT_LIGHTNING_COOLDOWN = BUILDER
-            .comment("Cooldown (in ticks) between Stormfront lightning strikes (60 = 3 seconds)")
-            .defineInRange("stormfrontLightningCooldown", 8, 0, Integer.MAX_VALUE);
 
-    // Spider is now a real pool entry (no longer experimental).
-    // private static final ForgeConfigSpec.IntValue WEIGHT_FORCEFIELD = ...
-    // --- Spider web tuning (revamp) ---
-    private static final ForgeConfigSpec.DoubleValue SPIDER_WEB_SPEED = BUILDER
-            .comment("Launch speed of the web projectile").defineInRange("spiderWebSpeed", 2.8, 0.5, 10.0);
-    private static final ForgeConfigSpec.IntValue SPIDER_FIRE_COOLDOWN = BUILDER
-            .comment("Minimum ticks between web shots (20 = 1s). Prevents spamming webs by holding V.").defineInRange("spiderFireCooldown", 10, 0, 200);
-    private static final ForgeConfigSpec.DoubleValue SPIDER_MIN_ROPE = BUILDER
-            .comment("Shortest the swing rope can be reeled to").defineInRange("spiderMinRope", 3.0, 1.0, 32.0);
-    private static final ForgeConfigSpec.DoubleValue SPIDER_MAX_ROPE = BUILDER
-            .comment("Longest the swing rope can be extended to").defineInRange("spiderMaxRope", 40.0, 4.0, 128.0);
-    private static final ForgeConfigSpec.DoubleValue SPIDER_REEL_STEP = BUILDER
-            .comment("How much rope length changes per scroll notch").defineInRange("spiderReelStep", 0.5, 0.1, 16.0);
-    private static final ForgeConfigSpec.DoubleValue SPIDER_REEL_PULL = BUILDER
-            .comment("Inward pull strength when reeling the rope shorter").defineInRange("spiderReelPull", 0.18, 0.0, 2.0);
-    private static final ForgeConfigSpec.DoubleValue SPIDER_SWING_CONTROL = BUILDER
-            .comment("How strongly look direction steers the swing").defineInRange("spiderSwingControl", 0.04, 0.0, 0.5);
-    private static final ForgeConfigSpec.DoubleValue SPIDER_MAX_SWING_SPEED = BUILDER
-            .comment("Maximum swing speed (caps momentum)").defineInRange("spiderMaxSwingSpeed", 1.8, 0.2, 5.0);
-    private static final ForgeConfigSpec.DoubleValue SPIDER_FLING_FORCE = BUILDER
-            .comment("Launch force when flinging a reeled-in mob by punching it and releasing the web.")
-            .defineInRange("spiderFlingForce", 2.5, 0.5, 10.0);
-    private static final ForgeConfigSpec.DoubleValue SPIDER_FLING_DAMAGE = BUILDER
-            .comment("Bonus damage dealt to a mob flung by the punch-and-release combo.")
-            .defineInRange("spiderFlingDamage", 6.0, 0.0, 100.0);
-
-    // --- Spider-Sense (passive bundled with the Spider power) ---
-    private static final ForgeConfigSpec.BooleanValue SPIDER_SENSE_ENABLED = BUILDER
-            .comment("Enable Spider-Sense: a passive danger warning (tingle) for Spider holders.")
-            .define("spiderSenseEnabled", true);
-    private static final ForgeConfigSpec.DoubleValue SPIDER_SENSE_RADIUS = BUILDER
-            .comment("Radius (blocks) scanned for threats by Spider-Sense.")
-            .defineInRange("spiderSenseRadius", 16.0, 4.0, 64.0);
-    private static final ForgeConfigSpec.IntValue SPIDER_SENSE_SCAN_INTERVAL = BUILDER
-            .comment("Ticks between Spider-Sense threat scans (lower = more responsive, costlier).")
-            .defineInRange("spiderSenseScanInterval", 5, 1, 40);
-    private static final ForgeConfigSpec.BooleanValue SPIDER_SENSE_DETECT_PROJECTILES = BUILDER
-            .comment("Spider-Sense warns about incoming projectiles aimed at you.")
-            .define("spiderSenseDetectProjectiles", true);
-    private static final ForgeConfigSpec.BooleanValue SPIDER_SENSE_DETECT_AGGRO = BUILDER
-            .comment("Spider-Sense warns about hostile mobs targeting you.")
-            .define("spiderSenseDetectAggro", true);
-    private static final ForgeConfigSpec.BooleanValue SPIDER_SENSE_DETECT_CREEPERS = BUILDER
-            .comment("Spider-Sense warns about primed (fusing) creepers nearby.")
-            .define("spiderSenseDetectCreepers", true);
-    private static final ForgeConfigSpec.BooleanValue SPIDER_SENSE_DODGE_PAYOFF = BUILDER
-            .comment("If true, reacting to a Spider-Sense warning grants brief damage reduction.")
-            .define("spiderSenseDodgePayoff", true);
-    private static final ForgeConfigSpec.DoubleValue SPIDER_SENSE_DR = BUILDER
-            .comment("Damage taken multiplier during the Spider-Sense reaction window (0.6 = 40% reduction).")
-            .defineInRange("spiderSenseDamageMultiplier", 0.6, 0.0, 1.0);
-    private static final ForgeConfigSpec.IntValue SPIDER_SENSE_WINDOW = BUILDER
-            .comment("Ticks the Spider-Sense reaction (damage-reduction) window lasts after a warning.")
-            .defineInRange("spiderSenseWindowTicks", 12, 1, 100);
-    private static final ForgeConfigSpec.IntValue SPIDER_SENSE_COOLDOWN = BUILDER
-            .comment("Minimum ticks between Spider-Sense warning cues (prevents tingle spam).")
-            .defineInRange("spiderSenseCooldownTicks", 16, 0, 200);
-
-    // --- Mob power pool: species bias ---
+    // ===================================================================
+    //  Mob Powers
+    // ===================================================================
+    private static final ForgeConfigSpec.IntValue MOB_WEIGHT_LIFESTEAL = BUILDER
+            .comment("Universal mob-pool base weight: Lifesteal")
+            .defineInRange("mobWeight.lifesteal", 1, 0, Integer.MAX_VALUE);
+    // Species-pool gates: these powers are added only through species-specific pools (not the
+    // universal pool). The weight here acts as an on/off gate for whether a mob may roll them at
+    // all - set to 0 to disable the power for mobs entirely (the species pools keep their own
+    // internal bias weights). Chest Blast, Explosive, and Forcefield default to 0 (off).
+    private static final ForgeConfigSpec.IntValue MOB_WEIGHT_DEEP = BUILDER
+            .comment("Mob gate: Deep (water powers). 0 = mobs never roll it.")
+            .defineInRange("mobWeight.deep", 1, 0, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.IntValue MOB_WEIGHT_BERSERKER = BUILDER
+            .comment("Mob gate: Berserker. 0 = mobs never roll it.")
+            .defineInRange("mobWeight.berserker", 1, 0, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.IntValue MOB_WEIGHT_INVINCIBLE = BUILDER
+            .comment("Mob gate: Invincibility. 0 = mobs never roll it.")
+            .defineInRange("mobWeight.invincible", 1, 0, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.IntValue MOB_WEIGHT_ATOM_CHARGING = BUILDER
+            .comment("Mob gate: Atom Charging. 0 = mobs never roll it.")
+            .defineInRange("mobWeight.atom_charging", 1, 0, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.IntValue MOB_WEIGHT_MAGNETISM = BUILDER
+            .comment("Mob gate: Magnetism. 0 = mobs never roll it.")
+            .defineInRange("mobWeight.magnetism", 1, 0, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.IntValue MOB_WEIGHT_LASER_ADVANCED = BUILDER
+            .comment("Mob gate: Advanced Laser Eyes. 0 = mobs never roll it.")
+            .defineInRange("mobWeight.laser_advanced", 1, 0, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.IntValue MOB_WEIGHT_CHEST_BLAST = BUILDER
+            .comment("Mob gate: Chest Blast (Soldier Boy). 0 = mobs never roll it. Off by default.")
+            .defineInRange("mobWeight.chest_blast", 0, 0, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.IntValue MOB_WEIGHT_EXPLOSIVE = BUILDER
+            .comment("Mob gate: Explosive. 0 = mobs never roll it. Off by default.")
+            .defineInRange("mobWeight.explosive", 0, 0, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.IntValue MOB_WEIGHT_FORCEFIELD = BUILDER
+            .comment("Mob gate: Forcefield. 0 = mobs never roll it. Off by default (mobs can't render the bubble).")
+            .defineInRange("mobWeight.forcefield", 0, 0, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.IntValue MOB_WEIGHT_PROJECTILE_IMMUNITY = BUILDER
+            .comment("Universal mob-pool base weight: Projectile Immunity")
+            .defineInRange("mobWeight.projectile_immunity", 1, 0, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.IntValue MOB_WEIGHT_PYROKINESIS = BUILDER
+            .comment("Universal mob-pool base weight: Pyrokinesis")
+            .defineInRange("mobWeight.pyrokinesis", 1, 0, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.IntValue MOB_WEIGHT_SHRINK = BUILDER
+            .comment("Universal mob-pool base weight: Shrink (Pehkui)")
+            .defineInRange("mobWeight.shrink", 1, 0, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.IntValue MOB_WEIGHT_SPEEDSTER = BUILDER
+            .comment("Universal mob-pool base weight: Speedster")
+            .defineInRange("mobWeight.speedster", 1, 0, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.IntValue MOB_WEIGHT_SPIDER = BUILDER
+            .comment("Universal mob-pool base weight: Spider")
+            .defineInRange("mobWeight.spider", 2, 0, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.IntValue MOB_WEIGHT_TELEPORT = BUILDER
+            .comment("Universal mob-pool base weight: Teleport")
+            .defineInRange("mobWeight.teleport", 1, 0, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.BooleanValue MOB_ENABLE_MULTI_POWERS = BUILDER.define("mobEnableMultiPowers", false);
+    private static final ForgeConfigSpec.IntValue MOB_MULTI_POWER_MAX_COUNT = BUILDER.defineInRange("mobMultiPowerMaxCount", 2, 1, 3);
     private static final ForgeConfigSpec.BooleanValue MOB_SPECIES_BIAS_ENABLED = BUILDER
             .comment("If true, mobs are biased toward thematic powers for their species (e.g. spiders",
                      "lean Spider, blazes lean fire). If false, every mob rolls only from the flat",
@@ -920,75 +1280,8 @@ public class Config {
                      "0.0 = species themes ignored (pure universal pool), 2.0 = themes twice as strong.",
                      "Lets you dial how hard mobs lean into their thematic powers.")
             .defineInRange("mobSpeciesBiasMultiplier", 1.0, 0.0, 16.0);
-
-    // --- Mob power pool: per-power BASE weights for the universal pool (every injectable
-    //     mob). These are the weights BEFORE any species bias is added on top. Set to 0 to
-    //     remove a power from the universal mob pool entirely. (Species blocks may still add
-    //     it for thematic mobs, scaled by mobSpeciesBiasMultiplier.)
-
-    // --- V1 Pool Weights ---
-    private static final ForgeConfigSpec.DoubleValue CHEST_BLAST_BEAM_DAMAGE = BUILDER
-            .comment("Damage per tick of the Chest Blast beam (fires 20x/sec, so 2.0 = 40 dps before armor)")
-            .defineInRange("chestBlastBeamDamage", 3.0, 0, Double.MAX_VALUE);
-    private static final ForgeConfigSpec.DoubleValue CHEST_BLAST_BURST_DAMAGE = BUILDER
-            .comment("Maximum damage of the initial Chest Blast explosion at point blank (falls off with distance)")
-            .defineInRange("chestBlastBurstDamage", 8.0, 0, Double.MAX_VALUE);
-    private static final ForgeConfigSpec.IntValue CHEST_BLAST_DURATION = BUILDER
-            .comment("Duration (in ticks) of the Chest Blast beam (80 = 4 seconds)")
-            .defineInRange("chestBlastDuration", 80, 20, Integer.MAX_VALUE);
-    private static final ForgeConfigSpec.IntValue CHEST_BLAST_CHARGE_TIME = BUILDER
-            .comment("Charge-up time (in ticks) before the Chest Blast fires (200 = 10 seconds)")
-            .defineInRange("chestBlastChargeTime", 200, 20, Integer.MAX_VALUE);
-    private static final ForgeConfigSpec.IntValue CHEST_BLAST_COOLDOWN = BUILDER
-            .comment("Cooldown (in ticks) after the Chest Blast ends before it can be used again (1200 = 60 seconds)")
-            .defineInRange("chestBlastCooldown", 1200, 0, Integer.MAX_VALUE);
-    private static final ForgeConfigSpec.BooleanValue CHEST_BLAST_BLOCKED_BY_WALLS = BUILDER.define("chestBlastBlockedByWalls", true);
-    private static final ForgeConfigSpec.BooleanValue CHEST_BLAST_STRIPS_POWERS = BUILDER.define("chestBlastStripsPowers", true);
-    private static final ForgeConfigSpec.BooleanValue CHEST_BLAST_SHIELD_BLOCKS_STRIP = BUILDER.define("chestBlastShieldBlocksStrip", true);
-    // --- Chest Blast Nova (sneak + V) ---
-    private static final ForgeConfigSpec.DoubleValue CHEST_BLAST_NOVA_RADIUS = BUILDER
-            .comment("Radius of the Soldier Boy nova depower/power-strip effect (sneak + V)")
-            .defineInRange("chestBlastNovaRadius", 8.0, 2.0, 32.0);
-    private static final ForgeConfigSpec.DoubleValue CHEST_BLAST_NOVA_POWER = BUILDER
-            .comment("Explosion power of the nova burst (vanilla TNT is 4.0; higher = bigger blast/damage/crater)")
-            .defineInRange("chestBlastNovaPower", 7.0, 0.0, 50.0);
-    private static final ForgeConfigSpec.DoubleValue CHEST_BLAST_NOVA_DAMAGE = BUILDER
-            .comment("Damage dealt by the nova burst to powered entities")
-            .defineInRange("chestBlastNovaDamage", 15.0, 0.0, 100.0);
-    private static final ForgeConfigSpec.DoubleValue CHEST_BLAST_NOVA_KNOCKBACK = BUILDER
-            .comment("Knockback strength of the nova burst")
-            .defineInRange("chestBlastNovaKnockback", 2.5, 0.0, 10.0);
-    private static final ForgeConfigSpec.IntValue CHEST_BLAST_NOVA_CHARGE_TIME = BUILDER
-            .comment("Charge time in ticks for nova burst (sneak + hold V). Beam and nova share the same cooldown (chestBlastCooldown).")
-            .defineInRange("chestBlastNovaChargeTime", 200, 0, Integer.MAX_VALUE);
-    // --- Virus Integration ---
-    private static final ForgeConfigSpec.BooleanValue VIRUS_DISABLES_PLAYER_POWERS = BUILDER.define("virusDisablesPlayerPowers", true);
-    private static final ForgeConfigSpec.BooleanValue VIRUS_DISABLES_MOB_POWERS = BUILDER.define("virusDisablesMobPowers", true);
-    // --- Mob Laser ---
     private static final ForgeConfigSpec.DoubleValue MOB_LASER_DAMAGE_CONFIG = BUILDER.defineInRange("mobLaserDamage", 0.02, 0.0, 10.0);
     private static final ForgeConfigSpec.DoubleValue MOB_ADVANCED_LASER_DAMAGE_CONFIG = BUILDER.defineInRange("mobAdvancedLaserDamage", 0.06, 0.0, 10.0);
-    // --- Discharge ---
-    private static final ForgeConfigSpec.DoubleValue POWERPLEX_DISCHARGE_DAMAGE = BUILDER.defineInRange("powerplexDischargeDamage", 2.0, 0.0, 50.0);
-    private static final ForgeConfigSpec.DoubleValue POWERPLEX_DISCHARGE_RADIUS = BUILDER.defineInRange("powerplexDischargeRadius", 5.0, 1.0, 32.0);
-    private static final ForgeConfigSpec.IntValue POWERPLEX_DISCHARGE_TICK_RATE = BUILDER.defineInRange("powerplexDischargeTickRate", 4, 1, 40);
-    private static final ForgeConfigSpec.DoubleValue STORMFRONT_DISCHARGE_DAMAGE = BUILDER.defineInRange("stormfrontDischargeDamage", 1.6, 0.0, 50.0);
-    private static final ForgeConfigSpec.DoubleValue STORMFRONT_DISCHARGE_RADIUS = BUILDER.defineInRange("stormfrontDischargeRadius", 6.0, 1.0, 32.0);
-    private static final ForgeConfigSpec.IntValue STORMFRONT_DISCHARGE_TICK_RATE = BUILDER.defineInRange("stormfrontDischargeTickRate", 4, 1, 40);
-    // Chain lightning (tap V at a mob in view)
-    private static final ForgeConfigSpec.DoubleValue STORMFRONT_CHAIN_DAMAGE = BUILDER.comment("Damage of the first chain-lightning hit").defineInRange("stormfrontChainDamage", 7.0, 0.0, 100.0);
-    private static final ForgeConfigSpec.DoubleValue STORMFRONT_CHAIN_FALLOFF = BUILDER.comment("Damage multiplier applied per additional chain jump (0-1)").defineInRange("stormfrontChainFalloff", 0.8, 0.0, 1.0);
-    private static final ForgeConfigSpec.IntValue STORMFRONT_CHAIN_MAX_JUMPS = BUILDER.comment("Maximum number of mobs a chain-lightning bolt arcs through").defineInRange("stormfrontChainMaxJumps", 5, 1, 32);
-    private static final ForgeConfigSpec.DoubleValue STORMFRONT_CHAIN_JUMP_RANGE = BUILDER.comment("Max distance the bolt can arc from one mob to the next").defineInRange("stormfrontChainJumpRange", 8.0, 1.0, 32.0);
-    private static final ForgeConfigSpec.DoubleValue STORMFRONT_CHAIN_AIM_RANGE = BUILDER.comment("Max distance to acquire the initial chain-lightning target in your view direction").defineInRange("stormfrontChainAimRange", 40.0, 1.0, 128.0);
-    private static final ForgeConfigSpec.IntValue CHEST_BLAST_RANGE = BUILDER
-            .comment("Range (in blocks) of the Chest Blast beam")
-            .defineInRange("chestBlastRange", 32, 8, 256);
-    private static final ForgeConfigSpec.DoubleValue CHEST_BLAST_BLOCK_BREAK_CHANCE = BUILDER
-            .comment("Chance per tick per block of the Chest Blast beam destroying blocks in its path (0 = disabled). WARNING: Values above 0 cause significant lag due to per-tick block iteration across the beam cone.")
-            .defineInRange("chestBlastBlockBreakChance", 0.0, 0.0, 1.0);
-    private static final ForgeConfigSpec.BooleanValue CHEST_BLAST_STRIPS_INVINCIBLE = BUILDER
-            .comment("Whether the Chest Blast beam can strip Invincibility (if false, Invincible blocks the strip)")
-            .define("chestBlastStripsInvincible", true);
     private static final ForgeConfigSpec.BooleanValue MOB_CHEST_BLAST_STRIPS_POWERS = BUILDER
             .comment("Whether mob Chest Blast strips Compound V powers from targets (like the player version)")
             .define("mobChestBlastStripsPowers", false);
@@ -996,29 +1289,137 @@ public class Config {
             .comment("Maximum aim deviation in degrees for mob Chest Blast (0 = perfect aim, 5 = dodgeable)")
             .defineInRange("mobChestBlastInaccuracy", 5.0, 0.0, 45.0);
 
+    // ===================================================================
+    //  Negative Effects
+    // ===================================================================
+    private static final ForgeConfigSpec.DoubleValue UNCONTROLLED_EXPLOSION_POWER = BUILDER
+            .comment("Explosion power when an Uncontrolled victim detonates (TNT = 4.0)").defineInRange("uncontrolledExplosionPower", 6.0, 0.0, 50.0);
+    private static final ForgeConfigSpec.BooleanValue UNCONTROLLED_EXPLOSION_BREAKS_BLOCKS = BUILDER
+            .comment("Whether the Uncontrolled detonation destroys blocks").define("uncontrolledExplosionBreaksBlocks", true);
+    private static final ForgeConfigSpec.IntValue WITHER_AMPLIFIER = BUILDER
+            .comment("Wither amplifier inflicted by Wither (0 = Wither I)").defineInRange("witherAmplifier", 3, 0, 10);
+    private static final ForgeConfigSpec.IntValue UNCONTROLLED_SIZE_INTERVAL_MIN = BUILDER
+            .comment("Minimum ticks between random size changes for Uncontrolled Size (20 = 1s)")
+            .defineInRange("uncontrolledSizeIntervalMinTicks", 60, 20, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.IntValue UNCONTROLLED_SIZE_INTERVAL_MAX = BUILDER
+            .comment("Maximum ticks between random size changes for Uncontrolled Size (1200 = 60s). Each wait is randomized between min and max, so changes are irregular and can be a minute or more apart.")
+            .defineInRange("uncontrolledSizeIntervalMaxTicks", 1400, 20, Integer.MAX_VALUE);
+    private static final ForgeConfigSpec.DoubleValue UNCONTROLLED_SIZE_MIN = BUILDER
+            .comment("Smallest random scale for Uncontrolled Size").defineInRange("uncontrolledSizeMinScale", 0.3, 0.05, 1.0);
+    private static final ForgeConfigSpec.DoubleValue UNCONTROLLED_SIZE_MAX = BUILDER
+            .comment("Largest random scale for Uncontrolled Size").defineInRange("uncontrolledSizeMaxScale", 2.5, 1.0, 8.0);
+
+
+    // --- Tier System ---
+    private static final ForgeConfigSpec.ConfigValue<String> DEFAULT_POWER_TIER = BUILDER.comment("Default tier. Valid: S, A, B, C, D").define("defaultPowerTier", "C");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_GENERIC = BUILDER.define("tierOf.generic", "SPECIAL");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_STORMFRONT = BUILDER.define("tierOf.stormfront", "S");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_INSTAKILL = BUILDER.define("tierOf.instakill", "S");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_CHEST_BLAST = BUILDER.define("tierOf.chest_blast", "S");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_INVINCIBLE = BUILDER.define("tierOf.invincible", "S");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_LASER_ADVANCED = BUILDER.define("tierOf.laser_advanced", "A");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_POWER_ABSORPTION = BUILDER.define("tierOf.power_absorption", "A");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_NULLIFY = BUILDER.define("tierOf.nullify", "A");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_HEAD_POP = BUILDER.define("tierOf.head_pop", "A");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_LASER_BASIC = BUILDER.define("tierOf.laser_basic", "B");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_LEAP = BUILDER.define("tierOf.leap", "B");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_TELEPORT = BUILDER.define("tierOf.teleport", "B");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_AIMLOCK = BUILDER.define("tierOf.aimlock", "B");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_PYROKINESIS = BUILDER.define("tierOf.pyrokinesis", "A");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_CRYOKINESIS = BUILDER.define("tierOf.cryokinesis", "A");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_SPEEDSTER = BUILDER.define("tierOf.speedster", "SPECIAL");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_LIFESTEAL = BUILDER.define("tierOf.lifesteal", "B");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_TELEKINESIS = BUILDER.define("tierOf.telekinesis", "B");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_SIZE_CONTROL = BUILDER.define("tierOf.sizeControlAdvanced", "SPECIAL");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_BERSERKER = BUILDER.define("tierOf.berserker", "B");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_HEALING = BUILDER.define("tierOf.healing", "B");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_EXPLOSIVE = BUILDER.define("tierOf.explosive", "B");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_PETRIFYING_GAZE = BUILDER.define("tierOf.petrifying_gaze", "B");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_MIND_CONTROL = BUILDER.define("tierOf.mind_control", "B");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_CREATIVE_FLIGHT = BUILDER.define("tierOf.creative_flight", "C");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_ENHANCED_REGEN = BUILDER.define("tierOf.enhanced_regen", "C");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_NIGHT_VISION = BUILDER.define("tierOf.night_vision", "C");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_INVISIBILITY = BUILDER.define("tierOf.invisibility", "C");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_DEEP = BUILDER.define("tierOf.deep", "C");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_DENSITY = BUILDER.define("tierOf.density", "C");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_SLIME = BUILDER.define("tierOf.slime", "D");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_ENLARGE = BUILDER.define("tierOf.enlarge", "C");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_SHRINK = BUILDER.define("tierOf.shrink", "C");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_LUCK = BUILDER.define("tierOf.luck", "D");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_LEVITATION = BUILDER.define("tierOf.levitation", "D");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_MIMIC = BUILDER.define("tierOf.mimic", "D");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_SONIC_SCREAM = BUILDER.define("tierOf.sonic_scream", "D");
+    private static final ForgeConfigSpec.DoubleValue SONIC_SCREAM_DAMAGE = BUILDER
+            .comment("Base Sonic Scream cone damage (bypasses armor) at point-blank; falls off with",
+                     "distance across the cone.")
+            .defineInRange("sonicScreamDamage", 10.0, 0.0, 100.0);
+    private static final ForgeConfigSpec.DoubleValue SONIC_SCREAM_PLAYER_DAMAGE_MULT = BUILDER
+            .comment("Multiplier on Sonic Scream damage when the target is a PLAYER (1.0 = same as",
+                     "mobs, 0.5 = half). Lets you soften PvP without nerfing PvE.")
+            .defineInRange("sonicScreamPlayerDamageMult", 0.5, 0.0, 1.0);
+    private static final ForgeConfigSpec.IntValue SONIC_SCREAM_COOLDOWN_TICKS = BUILDER
+            .comment("Cooldown (ticks, 20 = 1s) between Sonic Scream uses, starting when a scream",
+                     "fires. Default 300 = 15 seconds.")
+            .defineInRange("sonicScreamCooldownTicks", 300, 0, 12000);
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_PROJECTILE_IMMUNITY = BUILDER.define("tierOf.projectile_immunity", "D");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_ATOM_CHARGING = BUILDER.define("tierOf.atom_charging", "D");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_STAR_POWER = BUILDER.define("tierOf.star_power", "D");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_FORCEFIELD = BUILDER.define("tierOf.forcefield", "D");
+    private static final ForgeConfigSpec.ConfigValue<String> TIER_SPIDER = BUILDER.define("tierOf.spider", "A");
+
+    // Tier SP - legendary (no powers by default, custom assignable)
+    private static final ForgeConfigSpec.DoubleValue TIER_SP_DR = BUILDER.defineInRange("tierSP.damageReduction", 0.15, 0, 5);
+    private static final ForgeConfigSpec.DoubleValue TIER_SP_DR_PL = BUILDER.defineInRange("tierSP.damageReductionPerLevel", -0.03, -5, 5);
+    private static final ForgeConfigSpec.DoubleValue TIER_SP_STR = BUILDER.defineInRange("tierSP.strengthMultiplier", 3.0, 0, 50);
+    private static final ForgeConfigSpec.DoubleValue TIER_SP_STR_PL = BUILDER.defineInRange("tierSP.strengthPerLevel", 0.75, -10, 10);
+    private static final ForgeConfigSpec.DoubleValue TIER_SP_KB = BUILDER.defineInRange("tierSP.knockbackReduction", 0.15, 0, 5);
+    private static final ForgeConfigSpec.DoubleValue TIER_SP_KB_PL = BUILDER.defineInRange("tierSP.knockbackPerLevel", -0.03, -5, 5);
+    private static final ForgeConfigSpec.DoubleValue TIER_SP_KBD = BUILDER.defineInRange("tierSP.knockbackDealt", 2.5, 0, 20);
+    private static final ForgeConfigSpec.DoubleValue TIER_SP_KBD_PL = BUILDER.defineInRange("tierSP.knockbackDealtPerLevel", 0.5, -10, 10);
+
+    // Tier S
+    private static final ForgeConfigSpec.DoubleValue TIER_S_DR = BUILDER.defineInRange("tierS.damageReduction", 0.3, 0, 5);
+    private static final ForgeConfigSpec.DoubleValue TIER_S_DR_PL = BUILDER.defineInRange("tierS.damageReductionPerLevel", -0.05, -5, 5);
+    private static final ForgeConfigSpec.DoubleValue TIER_S_STR = BUILDER.defineInRange("tierS.strengthMultiplier", 2.0, 0, 50);
+    private static final ForgeConfigSpec.DoubleValue TIER_S_STR_PL = BUILDER.defineInRange("tierS.strengthPerLevel", 0.5, -10, 10);
+    private static final ForgeConfigSpec.DoubleValue TIER_S_KB = BUILDER.defineInRange("tierS.knockbackReduction", 0.3, 0, 5);
+    private static final ForgeConfigSpec.DoubleValue TIER_S_KB_PL = BUILDER.defineInRange("tierS.knockbackPerLevel", -0.05, -5, 5);
+    private static final ForgeConfigSpec.DoubleValue TIER_S_KBD = BUILDER.defineInRange("tierS.knockbackDealt", 2.0, 0, 20);
+    private static final ForgeConfigSpec.DoubleValue TIER_S_KBD_PL = BUILDER.defineInRange("tierS.knockbackDealtPerLevel", 0.3, -10, 10);
+    private static final ForgeConfigSpec.DoubleValue TIER_A_DR = BUILDER.defineInRange("tierA.damageReduction", 0.4, 0, 5);
+    private static final ForgeConfigSpec.DoubleValue TIER_A_DR_PL = BUILDER.defineInRange("tierA.damageReductionPerLevel", -0.04, -5, 5);
+    private static final ForgeConfigSpec.DoubleValue TIER_A_STR = BUILDER.defineInRange("tierA.strengthMultiplier", 1.75, 0, 50);
+    private static final ForgeConfigSpec.DoubleValue TIER_A_STR_PL = BUILDER.defineInRange("tierA.strengthPerLevel", 0.35, -10, 10);
+    private static final ForgeConfigSpec.DoubleValue TIER_A_KB = BUILDER.defineInRange("tierA.knockbackReduction", 0.4, 0, 5);
+    private static final ForgeConfigSpec.DoubleValue TIER_A_KB_PL = BUILDER.defineInRange("tierA.knockbackPerLevel", -0.04, -5, 5);
+    private static final ForgeConfigSpec.DoubleValue TIER_A_KBD = BUILDER.defineInRange("tierA.knockbackDealt", 1.75, 0, 20);
+    private static final ForgeConfigSpec.DoubleValue TIER_A_KBD_PL = BUILDER.defineInRange("tierA.knockbackDealtPerLevel", 0.2, -10, 10);
+    private static final ForgeConfigSpec.DoubleValue TIER_B_DR = BUILDER.defineInRange("tierB.damageReduction", 0.5, 0, 5);
+    private static final ForgeConfigSpec.DoubleValue TIER_B_DR_PL = BUILDER.defineInRange("tierB.damageReductionPerLevel", -0.03, -5, 5);
+    private static final ForgeConfigSpec.DoubleValue TIER_B_STR = BUILDER.defineInRange("tierB.strengthMultiplier", 1.5, 0, 50);
+    private static final ForgeConfigSpec.DoubleValue TIER_B_STR_PL = BUILDER.defineInRange("tierB.strengthPerLevel", 0.25, -10, 10);
+    private static final ForgeConfigSpec.DoubleValue TIER_B_KB = BUILDER.defineInRange("tierB.knockbackReduction", 0.5, 0, 5);
+    private static final ForgeConfigSpec.DoubleValue TIER_B_KB_PL = BUILDER.defineInRange("tierB.knockbackPerLevel", -0.03, -5, 5);
+    private static final ForgeConfigSpec.DoubleValue TIER_B_KBD = BUILDER.defineInRange("tierB.knockbackDealt", 1.5, 0, 20);
+    private static final ForgeConfigSpec.DoubleValue TIER_B_KBD_PL = BUILDER.defineInRange("tierB.knockbackDealtPerLevel", 0.15, -10, 10);
+    private static final ForgeConfigSpec.DoubleValue TIER_C_DR = BUILDER.defineInRange("tierC.damageReduction", 0.65, 0, 5);
+    private static final ForgeConfigSpec.DoubleValue TIER_C_DR_PL = BUILDER.defineInRange("tierC.damageReductionPerLevel", -0.02, -5, 5);
+    private static final ForgeConfigSpec.DoubleValue TIER_C_STR = BUILDER.defineInRange("tierC.strengthMultiplier", 1.25, 0, 50);
+    private static final ForgeConfigSpec.DoubleValue TIER_C_STR_PL = BUILDER.defineInRange("tierC.strengthPerLevel", 0.15, -10, 10);
+    private static final ForgeConfigSpec.DoubleValue TIER_C_KB = BUILDER.defineInRange("tierC.knockbackReduction", 0.65, 0, 5);
+    private static final ForgeConfigSpec.DoubleValue TIER_C_KB_PL = BUILDER.defineInRange("tierC.knockbackPerLevel", -0.02, -5, 5);
+    private static final ForgeConfigSpec.DoubleValue TIER_C_KBD = BUILDER.defineInRange("tierC.knockbackDealt", 1.25, 0, 20);
+    private static final ForgeConfigSpec.DoubleValue TIER_C_KBD_PL = BUILDER.defineInRange("tierC.knockbackDealtPerLevel", 0.1, -10, 10);
+    private static final ForgeConfigSpec.DoubleValue TIER_D_DR = BUILDER.defineInRange("tierD.damageReduction", 0.8, 0, 5);
+    private static final ForgeConfigSpec.DoubleValue TIER_D_DR_PL = BUILDER.defineInRange("tierD.damageReductionPerLevel", -0.01, -5, 5);
+    private static final ForgeConfigSpec.DoubleValue TIER_D_STR = BUILDER.defineInRange("tierD.strengthMultiplier", 1.1, 0, 50);
+    private static final ForgeConfigSpec.DoubleValue TIER_D_STR_PL = BUILDER.defineInRange("tierD.strengthPerLevel", 0.05, -10, 10);
+    private static final ForgeConfigSpec.DoubleValue TIER_D_KB = BUILDER.defineInRange("tierD.knockbackReduction", 0.8, 0, 5);
+    private static final ForgeConfigSpec.DoubleValue TIER_D_KB_PL = BUILDER.defineInRange("tierD.knockbackPerLevel", -0.01, -5, 5);
+    private static final ForgeConfigSpec.DoubleValue TIER_D_KBD = BUILDER.defineInRange("tierD.knockbackDealt", 1.1, 0, 20);
+    private static final ForgeConfigSpec.DoubleValue TIER_D_KBD_PL = BUILDER.defineInRange("tierD.knockbackDealtPerLevel", 0.05, -10, 10);
+
     // --- Mob Power Toggles (all enabled by default) ---
-    private static final ForgeConfigSpec.BooleanValue MOB_POWER_SPEEDSTER = BUILDER.comment("Allow mobs to spawn with Speedster").define("mobPowerSpeedster", true);
-    private static final ForgeConfigSpec.BooleanValue MOB_POWER_DEEP = BUILDER.comment("Allow mobs to spawn with Deep (water powers)").define("mobPowerDeep", true);
-    private static final ForgeConfigSpec.BooleanValue MOB_POWER_TELEPORT = BUILDER.comment("Allow mobs to spawn with Teleportation").define("mobPowerTeleport", true);
-    private static final ForgeConfigSpec.BooleanValue MOB_POWER_ATOM_CHARGING = BUILDER.comment("Allow mobs to spawn with Atom Charging").define("mobPowerAtomCharging", true);
-    private static final ForgeConfigSpec.BooleanValue MOB_POWER_INVISIBILITY = BUILDER.comment("Allow mobs to spawn with Invisibility").define("mobPowerInvisibility", true);
-    private static final ForgeConfigSpec.BooleanValue MOB_POWER_INVINCIBLE = BUILDER.comment("Allow mobs to spawn with Invincibility").define("mobPowerInvincible", true);
-    private static final ForgeConfigSpec.BooleanValue MOB_POWER_LASER_BASIC = BUILDER.comment("Allow mobs to spawn with Basic Laser Eyes").define("mobPowerLaserBasic", true);
-    private static final ForgeConfigSpec.BooleanValue MOB_POWER_LASER_ADVANCED = BUILDER.comment("Allow mobs to spawn with Advanced Laser Eyes").define("mobPowerLaserAdvanced", true);
-    private static final ForgeConfigSpec.BooleanValue MOB_POWER_ENHANCED_REGEN = BUILDER.comment("Allow mobs to spawn with Enhanced Regeneration").define("mobPowerEnhancedRegen", true);
-    private static final ForgeConfigSpec.BooleanValue MOB_POWER_BERSERKER = BUILDER.comment("Allow mobs to spawn with Berserker").define("mobPowerBerserker", true);
-    private static final ForgeConfigSpec.BooleanValue MOB_POWER_PROJECTILE_IMMUNITY = BUILDER.comment("Allow mobs to spawn with Projectile Immunity").define("mobPowerProjectileImmunity", true);
-    private static final ForgeConfigSpec.BooleanValue MOB_POWER_MAGNETISM = BUILDER.comment("Allow mobs to spawn with Magnetism").define("mobPowerMagnetism", true);
-    private static final ForgeConfigSpec.BooleanValue MOB_POWER_SHRINK = BUILDER.comment("Allow mobs to spawn with Shrink (requires Pehkui)").define("mobPowerShrink", true);
-    private static final ForgeConfigSpec.BooleanValue MOB_POWER_ENLARGE = BUILDER.comment("Allow mobs to spawn with Enlarge (requires Pehkui)").define("mobPowerEnlarge", true);
-    private static final ForgeConfigSpec.BooleanValue MOB_POWER_CREATIVE_FLIGHT = BUILDER.comment("Allow mobs to spawn with Creative Flight (fly toward target, floating turret with lasers)").define("mobPowerCreativeFlight", true);
-    private static final ForgeConfigSpec.BooleanValue MOB_POWER_CHEST_BLAST = BUILDER.comment("Allow mobs to spawn with Chest Blast (Soldier Boy). Disabled by default.").define("mobPowerChestBlast", false);
-    private static final ForgeConfigSpec.BooleanValue MOB_POWER_LEAP = BUILDER.comment("Allow mobs to spawn with Leap (Queen Maeve)").define("mobPowerLeap", true);
-    private static final ForgeConfigSpec.BooleanValue MOB_POWER_EXPLOSIVE = BUILDER.comment("Allow mobs to spawn with Explosive. Disabled by default.").define("mobPowerExplosive", false);
-    private static final ForgeConfigSpec.BooleanValue MOB_POWER_HEALING = BUILDER.comment("Allow mobs to spawn with Healing aura").define("mobPowerHealing", true);
-    private static final ForgeConfigSpec.BooleanValue MOB_POWER_FORCEFIELD = BUILDER.comment("Allow mobs to spawn with Forcefield. Disabled — mobs cannot render the shield bubble.").define("mobPowerForcefield", false);
-    private static final ForgeConfigSpec.BooleanValue MOB_POWER_PYROKINESIS = BUILDER.comment("Allow mobs to spawn with Pyrokinesis (fireballs + flame wave). Blazes are always exempt.").define("mobPowerPyrokinesis", true);
-    private static final ForgeConfigSpec.BooleanValue MOB_POWER_CRYOKINESIS = BUILDER.comment("Allow mobs to spawn with Cryokinesis (ice balls + frost aura). Nether mobs are always exempt.").define("mobPowerCryokinesis", true);
     private static final ForgeConfigSpec.IntValue MOB_PYRO_FIRE_COOLDOWN = BUILDER.comment("Ticks between a mob's fireball throws").defineInRange("mobPyroFireCooldown", 40, 1, Integer.MAX_VALUE);
     private static final ForgeConfigSpec.IntValue MOB_CRYO_FIRE_COOLDOWN = BUILDER.comment("Ticks between a mob's ice ball throws").defineInRange("mobCryoFireCooldown", 40, 1, Integer.MAX_VALUE);
     private static final ForgeConfigSpec.DoubleValue MOB_PROJECTILE_RANGE = BUILDER.comment("Max distance at which a Pyro/Cryo mob will throw projectiles at its target").defineInRange("mobProjectileRange", 24.0, 1.0, 128.0);
@@ -1030,23 +1431,6 @@ public class Config {
             .comment("Weight of Chest Blast in the mob power pool")
             .defineInRange("mobChestBlastWeight", 1, 1, Integer.MAX_VALUE);
 
-    public static boolean mobPowerSpeedster;
-    public static boolean mobPowerDeep;
-    public static boolean mobPowerTeleport;
-    public static boolean mobPowerAtomCharging;
-    public static boolean mobPowerInvisibility;
-    public static boolean mobPowerInvincible;
-    public static boolean mobPowerLaserBasic;
-    public static boolean mobPowerLaserAdvanced;
-    public static boolean mobPowerEnhancedRegen;
-    public static boolean mobPowerBerserker;
-    public static boolean mobPowerProjectileImmunity;
-    public static boolean mobPowerMagnetism;
-    public static boolean mobPowerShrink;
-    public static boolean mobPowerEnlarge;
-    public static boolean mobPowerForcefield;
-    public static boolean mobPowerPyrokinesis;
-    public static boolean mobPowerCryokinesis;
     public static int mobPyroFireCooldown;
     public static int mobCryoFireCooldown;
     public static double mobProjectileRange;
@@ -1107,6 +1491,11 @@ public class Config {
     private static final ForgeConfigSpec.BooleanValue PERSIST_POWERS_ON_DEATH = BUILDER
             .comment("Whether Compound V powers persist through death (disabled by default)")
             .define("persistPowersOnDeath", false);
+    private static final ForgeConfigSpec.BooleanValue PERSIST_FAILURE_EFFECTS_ON_DEATH = BUILDER
+            .comment("Only matters when persistPowersOnDeath is on. If true, failure/negative effects",
+                     "(Slowness, Wither, the Uncontrolled ones, etc.) also persist through death. Off",
+                     "by default, so a bad roll doesn't follow you past dying - real powers still do.")
+            .define("persistFailureEffectsOnDeath", false);
     private static final ForgeConfigSpec.BooleanValue VIRUS_REMOVES_POWER_ON_DEATH = BUILDER
             .comment("If persistPowersOnDeath is on and player has the virus, dying removes one power")
             .define("virusRemovesPowerOnDeath", true);
@@ -1146,6 +1535,8 @@ public class Config {
     public static boolean playerPickupRequiresCompoundV;
     public static double playerPickupSizeRatio;
     public static boolean v1LevelUpMaxed;
+    /** Parsed V1 upgrade paths: lesser power -> greater power. Built from v1UpgradePaths at load. */
+    public static java.util.Map<net.minecraft.world.effect.MobEffect, net.minecraft.world.effect.MobEffect> v1UpgradePaths = new java.util.HashMap<>();
     public static double tempVBadOutcomeChance;
     // Tier system
     public static CompoundVEffect.PowerTier defaultPowerTier;
@@ -1153,6 +1544,8 @@ public class Config {
     public static java.util.Map<net.minecraft.world.effect.MobEffect, CompoundVEffect.PowerTier> effectTierMap = new java.util.HashMap<>();
     // Multi-power
     public static boolean enableMultiPowers;
+    public static boolean irradiationWeakensSupes;
+    public static int irradiationWeakenMinLevel;
     public static int multiPowerMaxCount;
     public static boolean tempVEnableMultiPowers;
     public static int tempVMultiPowerMaxCount;
@@ -1167,16 +1560,31 @@ public class Config {
     public static double laserAdvancedShieldPushMultiplier;
     public static int laserBasicDamageTickRate;
     public static boolean laserDisabledWhileMoving;
+    public static double laserFirstPersonOpacity;
+    public static boolean laserIntimidationFirstPerson;
     public static double laserMoveSpeedThreshold;
     public static boolean laserIntensityAdjustable;
     public static double laserIntensityScrollStep;
     public static double laserBreakCriticalIntensity;
     public static double laserFireCriticalIntensity;
+    public static boolean laserIgniteEnabled;
+    public static double laserIgniteChance;
+    public static double laserIgniteCriticalIntensity;
+    public static int laserIgniteEntitySeconds;
     public static int laserAdvancedDamageTickRate;
     public static boolean laserBasicBreakBlocks;
     public static boolean laserAdvancedBreakBlocks;
     public static double laserBlockBreakChance;
+    public static double laserBreakSpeed;
+    public static double laserBreakHardnessWeight;
+    public static double laserBreakResistanceWeight;
+    public static double laserBreakDecay;
     public static boolean laserBlockBreakDrops;
+    public static boolean laserHeartbeatEnabled;
+    public static double laserHeartbeatRange;
+    public static double laserHeartbeatHealthThreshold;
+    public static int laserHeartbeatSlowInterval;
+    public static int laserHeartbeatFastInterval;
     public static boolean chestBlastBlockBreakDrops;
     public static boolean chestBlastNovaBlockBreakDrops;
     public static boolean chestBlastNovaBreaksBlocks;
@@ -1187,6 +1595,7 @@ public class Config {
     public static int teleportCooldown;
     public static double forcefieldMaxHp;
     public static double forcefieldRegenPerTick;
+    public static int forcefieldRegenLockoutTicks;
     public static double forcefieldDamageMultiplier;
     public static double forcefieldReenablePercent;
     public static double forcefieldBreakDamage;
@@ -1197,6 +1606,9 @@ public class Config {
     public static double nullifyRadius;
     // Speedster
     public static int speedsterSpeedLevelsPerAmp;
+    public static double speedsterSprintDamage;
+    public static double speedsterSprintDamagePerAmp;
+    public static double speedsterPlayerDamageMult;
     // Chest blast extras
     public static boolean chestBlastBlockedByWalls;
     public static boolean chestBlastStripsPowers;
@@ -1216,6 +1628,8 @@ public class Config {
     public static double powerplexDischargeDamage;
     public static double powerplexDischargeRadius;
     public static int powerplexDischargeTickRate;
+    public static double powerplexFocusDamage;
+    public static double powerplexFocusRange;
     public static double stormfrontDischargeDamage;
     public static double stormfrontChainDamage;
     public static double stormfrontChainFalloff;
@@ -1233,6 +1647,7 @@ public class Config {
     public static int v1WeightCryokinesis;
     public static int v1WeightDeep;
     public static int v1WeightDensity;
+    public static int v1WeightSlime;
     public static int v1WeightEnhancedRegen;
     public static int v1WeightEnlarge;
     public static int v1WeightExplosive;
@@ -1292,7 +1707,6 @@ public class Config {
     public static int weightLifesteal;
     public static double[] lifestealLevelFractions;
     public static boolean lifestealBlocksAllHealing;
-    public static boolean mobPowerLifesteal;
     public static int weightTelekinesis;
     public static double telekinesisRange;
     public static double telekinesisHoldDistance;
@@ -1305,15 +1719,47 @@ public class Config {
     public static double telekinesisScrollMaxDistance;
     public static int weightSizeControlAdvanced;
     public static double spiderWebSpeed;
+    public static boolean spiderWallClimbEnabled;
+    public static boolean spiderCeilingClimbEnabled;
+    public static double spiderClimbSpeed;
+    public static double spiderClimbStickGap;
+    public static boolean spiderClimbLookRelative;
+    public static double spiderReelGroundLift;
+    public static boolean spiderWallJumpEnabled;
+    public static double spiderWallJumpPower;
+    public static double spiderWallJumpLift;
+    public static boolean spiderRaycastWebbing;
+    public static double spiderWebFallCompensation;
     public static int spiderFireCooldown;
+    public static int spiderMobWebStuckMaxTicks;
+    public static double spiderMobWebTrapChance;
+    public static int spiderMobWebTrapCooldown;
     public static double spiderMinRope;
     public static double spiderMaxRope;
     public static double spiderReelStep;
     public static double spiderReelPull;
+    public static boolean spiderReelMassEnabled;
+    public static double spiderMobReelSpring;
+    public static double spiderMobReelMaxSpeed;
+    public static double spiderReelHealthWeight;
+    public static double spiderReelSizeWeight;
+    public static double spiderReelMaxMass;
     public static double spiderSwingControl;
+    public static boolean spiderSwingJumpEnabled;
+    public static int spiderSwingJumpGroundGrace;
+    public static boolean spiderSwingJumpRefires;
+    public static double spiderSwingJumpMomentum;
+    public static double spiderSwingJumpLift;
+    public static double spiderSwingPump;
+    public static double spiderSwingGravity;
+    public static double spiderWebGravityMult;
     public static double spiderMaxSwingSpeed;
+    public static double spiderSwingBoost;
     public static double spiderFlingForce;
     public static double spiderFlingDamage;
+    public static double spiderSlamPitchThreshold;
+    public static double spiderSlamForce;
+    public static double spiderSlamDamage;
     public static boolean spiderSenseEnabled;
     public static double spiderSenseRadius;
     public static int spiderSenseScanInterval;
@@ -1335,10 +1781,21 @@ public class Config {
     public static int mobWeightCreativeFlight;
     public static int mobWeightShrink;
     public static int mobWeightEnlarge;
+    public static int mobWeightSizeControlAdvanced;
     public static int mobWeightLeap;
+    public static int mobWeightSlime;
     public static int mobWeightSpider;
     public static int mobWeightHealing;
     public static int mobWeightLifesteal;
+    public static int mobWeightDeep;
+    public static int mobWeightBerserker;
+    public static int mobWeightInvincible;
+    public static int mobWeightAtomCharging;
+    public static int mobWeightMagnetism;
+    public static int mobWeightLaserAdvanced;
+    public static int mobWeightChestBlast;
+    public static int mobWeightExplosive;
+    public static int mobWeightForcefield;
     public static int mobWeightPyrokinesis;
     public static int mobWeightCryokinesis;
     public static int weightHeadPopFailure;
@@ -1385,6 +1842,8 @@ public class Config {
     public static boolean cryoAuraFreezesWater;
     public static double aimlockRange;
     public static double aimlockHomingStrength;
+    public static double healingSelfPerTick;
+    public static int healingSelfDelayTicks;
     public static int teleportRange;
     public static int weightAtomCharging;
     public static int weightInvisibility;
@@ -1398,9 +1857,23 @@ public class Config {
     public static int weightEnlarge;
     public static int weightPowerAbsorption;
     public static int weightSonicScream;
+    public static double sonicScreamDamage;
+    public static double sonicScreamPlayerDamageMult;
+    public static int sonicScreamCooldownTicks;
     public static int weightHeadPop;
     public static int weightEnhancedRegen;
     public static int weightDensity;
+    public static int weightSlime;
+    public static double slimeBounceFactor;
+    public static double slimeMaxBounce;
+    public static double slimeBounceMinImpact;
+    public static int slimeJumpAmplifier;
+    public static int slimeJumpDuration;
+    public static double slimeHopSpeed;
+    public static boolean slimeAlwaysActive;
+    public static double slimeDamageTaken;
+    public static double slimeKnockbackTaken;
+    public static double slimeExplosionKnockback;
     public static double densityDamageMultiplier;
     public static int weightInstakill;
     public static int weightMindControl;
@@ -1428,6 +1901,8 @@ public class Config {
     public static int weightNullify;
     public static int weightChestBlast;
     public static double chestBlastBeamDamage;
+    public static double chestBlastForcefieldDamage;
+    public static double chestBlastForcefieldKnockback;
     public static double chestBlastBurstDamage;
     public static int chestBlastDuration;
     public static int chestBlastChargeTime;
@@ -1435,11 +1910,6 @@ public class Config {
     public static int chestBlastRange;
     public static double chestBlastBlockBreakChance;
     public static boolean chestBlastStripsInvincible;
-    public static boolean mobPowerCreativeFlight;
-    public static boolean mobPowerChestBlast;
-    public static boolean mobPowerLeap;
-    public static boolean mobPowerExplosive;
-    public static boolean mobPowerHealing;
     public static int mobChestBlastWeight;
     public static boolean mobChestBlastStripsPowers;
     public static double mobChestBlastInaccuracy;
@@ -1459,6 +1929,7 @@ public class Config {
     public static LaserVisualMode laserVisualMode;
     public static boolean enableMobPowers;
     public static boolean persistPowersOnDeath;
+    public static boolean persistFailureEffectsOnDeath;
     public static double mobPowerSpawnChance;
     public static double mobCompoundVDropChance;
     public static double mobTempVDropChance;
@@ -1481,6 +1952,23 @@ public class Config {
         playerPickupRequiresCompoundV = PLAYER_PICKUP_REQUIRES_COMPOUND_V.get();
         playerPickupSizeRatio = PLAYER_PICKUP_SIZE_RATIO.get();
         v1LevelUpMaxed = V1_LEVEL_UP_MAXED.get();
+        // Build the V1 upgrade map. Addon-registered paths (via the public API) are applied first,
+        // then config-defined paths layer on top so server owners can always override an addon.
+        // Unknown config ids are skipped with a warning; the default namespace is compound_v.
+        v1UpgradePaths = new java.util.HashMap<>();
+        v1UpgradePaths.putAll(blueduck.compound_v.api.CompoundVUpgrades.getRegisteredPaths());
+        for (String entry : V1_UPGRADE_PATHS.get()) {
+            String[] parts = entry.split("->");
+            if (parts.length != 2) continue;
+            net.minecraft.world.effect.MobEffect from = resolveEffectId(parts[0].trim());
+            net.minecraft.world.effect.MobEffect to = resolveEffectId(parts[1].trim());
+            if (from != null && to != null) {
+                v1UpgradePaths.put(from, to);
+            } else {
+                com.mojang.logging.LogUtils.getLogger().warn(
+                        "Compound V: ignoring invalid v1UpgradePaths entry '{}'", entry);
+            }
+        }
         tempVBadOutcomeChance = TEMP_V_BAD_REACTION_CHANCE.get();
         // Tier system
         String tierStr = DEFAULT_POWER_TIER.get().toUpperCase();
@@ -1494,12 +1982,17 @@ public class Config {
         tierStats[5] = new double[]{ TIER_D_DR.get(), TIER_D_DR_PL.get(), TIER_D_STR.get(), TIER_D_STR_PL.get(), TIER_D_KB.get(), TIER_D_KB_PL.get(), TIER_D_KBD.get(), TIER_D_KBD_PL.get() };
         // Multi-power
         enableMultiPowers = ENABLE_MULTI_POWERS.get(); multiPowerMaxCount = MULTI_POWER_MAX_COUNT.get();
+        irradiationWeakensSupes = IRRADIATION_WEAKENS_SUPES.get();
+        irradiationWeakenMinLevel = IRRADIATION_WEAKEN_MIN_LEVEL.get();
         tempVEnableMultiPowers = TEMP_V_ENABLE_MULTI_POWERS.get(); tempVMultiPowerMaxCount = TEMP_V_MULTI_POWER_MAX_COUNT.get();
         mobEnableMultiPowers = MOB_ENABLE_MULTI_POWERS.get(); mobMultiPowerMaxCount = MOB_MULTI_POWER_MAX_COUNT.get();
         weightGeneric = WEIGHT_GENERIC.get();
         weightSpeedster = WEIGHT_SPEEDSTER.get();
         speedsterMobAttack = SPEEDSTER_SPEED_ATTACK.get();
         speedsterSpeedLevelsPerAmp = SPEEDSTER_SPEED_LEVELS_PER_AMP.get();
+        speedsterSprintDamage = SPEEDSTER_SPRINT_DAMAGE.get();
+        speedsterSprintDamagePerAmp = SPEEDSTER_SPRINT_DAMAGE_PER_AMP.get();
+        speedsterPlayerDamageMult = SPEEDSTER_PLAYER_DAMAGE_MULT.get();
         weightWater = WEIGHT_WATER.get();
         weightTeleport = WEIGHT_TELEPORT.get();
         weightAimlock = WEIGHT_AIMLOCK.get();
@@ -1529,7 +2022,6 @@ public class Config {
             for (int i = 0; i < lsFractions.size(); i++) lifestealLevelFractions[i] = lsFractions.get(i);
         }
         lifestealBlocksAllHealing = LIFESTEAL_BLOCKS_ALL_HEALING.get();
-        mobPowerLifesteal = LIFESTEAL_MOBS.get();
         weightTelekinesis = WEIGHT_TELEKINESIS.get();
         telekinesisRange = TELEKINESIS_RANGE.get();
         telekinesisHoldDistance = TELEKINESIS_HOLD_DISTANCE.get();
@@ -1542,15 +2034,47 @@ public class Config {
         telekinesisScrollMaxDistance = TELEKINESIS_SCROLL_MAX.get();
         weightSizeControlAdvanced = WEIGHT_SIZE_CONTROL.get();
         spiderWebSpeed = SPIDER_WEB_SPEED.get();
+        spiderWallClimbEnabled = SPIDER_WALL_CLIMB_ENABLED.get();
+        spiderCeilingClimbEnabled = SPIDER_CEILING_CLIMB_ENABLED.get();
+        spiderClimbSpeed = SPIDER_CLIMB_SPEED.get();
+        spiderClimbStickGap = SPIDER_CLIMB_STICK_GAP.get();
+        spiderClimbLookRelative = SPIDER_CLIMB_LOOK_RELATIVE.get();
+        spiderReelGroundLift = SPIDER_REEL_GROUND_LIFT.get();
+        spiderWallJumpEnabled = SPIDER_WALL_JUMP_ENABLED.get();
+        spiderWallJumpPower = SPIDER_WALL_JUMP_POWER.get();
+        spiderWallJumpLift = SPIDER_WALL_JUMP_LIFT.get();
+        spiderRaycastWebbing = SPIDER_RAYCAST_WEBBING.get();
+        spiderWebFallCompensation = SPIDER_WEB_FALL_COMPENSATION.get();
         spiderFireCooldown = SPIDER_FIRE_COOLDOWN.get();
+        spiderMobWebStuckMaxTicks = SPIDER_MOB_WEB_STUCK_MAX_TICKS.get();
+        spiderMobWebTrapChance = SPIDER_MOB_WEB_TRAP_CHANCE.get();
+        spiderMobWebTrapCooldown = SPIDER_MOB_WEB_TRAP_COOLDOWN.get();
         spiderMinRope = SPIDER_MIN_ROPE.get();
         spiderMaxRope = SPIDER_MAX_ROPE.get();
         spiderReelStep = SPIDER_REEL_STEP.get();
         spiderReelPull = SPIDER_REEL_PULL.get();
+        spiderReelMassEnabled = SPIDER_REEL_MASS_ENABLED.get();
+        spiderMobReelSpring = SPIDER_MOB_REEL_SPRING.get();
+        spiderMobReelMaxSpeed = SPIDER_MOB_REEL_MAX_SPEED.get();
+        spiderReelHealthWeight = SPIDER_REEL_HEALTH_WEIGHT.get();
+        spiderReelSizeWeight = SPIDER_REEL_SIZE_WEIGHT.get();
+        spiderReelMaxMass = SPIDER_REEL_MAX_MASS.get();
         spiderSwingControl = SPIDER_SWING_CONTROL.get();
+        spiderSwingJumpEnabled = SPIDER_SWING_JUMP_ENABLED.get();
+        spiderSwingJumpGroundGrace = SPIDER_SWING_JUMP_GROUND_GRACE.get();
+        spiderSwingJumpRefires = SPIDER_SWING_JUMP_REFIRES.get();
+        spiderSwingJumpMomentum = SPIDER_SWING_JUMP_MOMENTUM.get();
+        spiderSwingJumpLift = SPIDER_SWING_JUMP_LIFT.get();
+        spiderSwingPump = SPIDER_SWING_PUMP.get();
+        spiderSwingGravity = SPIDER_SWING_GRAVITY.get();
+        spiderWebGravityMult = SPIDER_WEB_GRAVITY_MULT.get();
         spiderMaxSwingSpeed = SPIDER_MAX_SWING_SPEED.get();
+        spiderSwingBoost = SPIDER_SWING_BOOST.get();
         spiderFlingForce = SPIDER_FLING_FORCE.get();
         spiderFlingDamage = SPIDER_FLING_DAMAGE.get();
+        spiderSlamPitchThreshold = SPIDER_SLAM_PITCH_THRESHOLD.get();
+        spiderSlamForce = SPIDER_SLAM_FORCE.get();
+        spiderSlamDamage = SPIDER_SLAM_DAMAGE.get();
         spiderSenseEnabled = SPIDER_SENSE_ENABLED.get();
         spiderSenseRadius = SPIDER_SENSE_RADIUS.get();
         spiderSenseScanInterval = SPIDER_SENSE_SCAN_INTERVAL.get();
@@ -1572,10 +2096,21 @@ public class Config {
         mobWeightCreativeFlight = MOB_WEIGHT_CREATIVE_FLIGHT.get();
         mobWeightShrink = MOB_WEIGHT_SHRINK.get();
         mobWeightEnlarge = MOB_WEIGHT_ENLARGE.get();
+        mobWeightSizeControlAdvanced = MOB_WEIGHT_SIZE_CONTROL_ADVANCED.get();
         mobWeightLeap = MOB_WEIGHT_LEAP.get();
+        mobWeightSlime = MOB_WEIGHT_SLIME.get();
         mobWeightSpider = MOB_WEIGHT_SPIDER.get();
         mobWeightHealing = MOB_WEIGHT_HEALING.get();
         mobWeightLifesteal = MOB_WEIGHT_LIFESTEAL.get();
+        mobWeightDeep = MOB_WEIGHT_DEEP.get();
+        mobWeightBerserker = MOB_WEIGHT_BERSERKER.get();
+        mobWeightInvincible = MOB_WEIGHT_INVINCIBLE.get();
+        mobWeightAtomCharging = MOB_WEIGHT_ATOM_CHARGING.get();
+        mobWeightMagnetism = MOB_WEIGHT_MAGNETISM.get();
+        mobWeightLaserAdvanced = MOB_WEIGHT_LASER_ADVANCED.get();
+        mobWeightChestBlast = MOB_WEIGHT_CHEST_BLAST.get();
+        mobWeightExplosive = MOB_WEIGHT_EXPLOSIVE.get();
+        mobWeightForcefield = MOB_WEIGHT_FORCEFIELD.get();
         mobWeightPyrokinesis = MOB_WEIGHT_PYROKINESIS.get();
         mobWeightCryokinesis = MOB_WEIGHT_CRYOKINESIS.get();
         weightHeadPopFailure = WEIGHT_HEAD_POP_FAILURE.get();
@@ -1620,10 +2155,13 @@ public class Config {
         cryoAuraSlownessAmplifier = CRYO_AURA_SLOWNESS_AMPLIFIER.get();
         cryoAuraSelfSlow = CRYO_AURA_SELF_SLOW.get();
         cryoAuraFreezesWater = CRYO_AURA_FREEZES_WATER.get();
+        healingSelfPerTick = HEALING_SELF_PER_TICK.get();
+        healingSelfDelayTicks = HEALING_SELF_DELAY_TICKS.get();
         teleportRange = TELEPORT_RANGE.get();
         teleportCooldown = TELEPORT_COOLDOWN.get();
         forcefieldMaxHp = FORCEFIELD_MAX_HP.get();
         forcefieldRegenPerTick = FORCEFIELD_REGEN_PER_TICK.get();
+        forcefieldRegenLockoutTicks = FORCEFIELD_REGEN_LOCKOUT_TICKS.get();
         forcefieldDamageMultiplier = FORCEFIELD_DAMAGE_MULTIPLIER.get();
         forcefieldReenablePercent = FORCEFIELD_REENABLE_PERCENT.get();
         forcefieldBreakDamage = FORCEFIELD_BREAK_DAMAGE.get();
@@ -1638,13 +2176,28 @@ public class Config {
         laserAdvancedShieldPushMultiplier = LASER_ADVANCED_SHIELD_PUSH_MULTIPLIER.get();
         laserBasicDamageTickRate = LASER_BASIC_DAMAGE_TICK_RATE.get(); laserAdvancedDamageTickRate = LASER_ADVANCED_DAMAGE_TICK_RATE.get();
         laserDisabledWhileMoving = LASER_DISABLED_WHILE_MOVING.get();
+        laserFirstPersonOpacity = LASER_FIRST_PERSON_OPACITY.get();
+        laserIntimidationFirstPerson = LASER_INTIMIDATION_FIRST_PERSON.get();
         laserMoveSpeedThreshold = LASER_MOVE_SPEED_THRESHOLD.get();
         laserIntensityAdjustable = LASER_INTENSITY_ADJUSTABLE.get();
         laserIntensityScrollStep = LASER_INTENSITY_SCROLL_STEP.get();
         laserBreakCriticalIntensity = LASER_BREAK_CRITICAL.get();
         laserFireCriticalIntensity = LASER_FIRE_CRITICAL.get();
+        laserIgniteEnabled = LASER_IGNITE_ENABLED.get();
+        laserIgniteChance = LASER_IGNITE_CHANCE.get();
+        laserIgniteCriticalIntensity = LASER_IGNITE_CRITICAL.get();
+        laserIgniteEntitySeconds = LASER_IGNITE_ENTITY_SECONDS.get();
         laserBasicBreakBlocks = LASER_BASIC_BREAK_BLOCKS.get(); laserAdvancedBreakBlocks = LASER_ADVANCED_BREAK_BLOCKS.get();
         laserBlockBreakChance = LASER_BLOCK_BREAK_CHANCE.get(); laserBlockBreakDrops = LASER_BLOCK_BREAK_DROPS.get();
+        laserHeartbeatEnabled = LASER_HEARTBEAT_ENABLED.get();
+        laserHeartbeatRange = LASER_HEARTBEAT_RANGE.get();
+        laserHeartbeatHealthThreshold = LASER_HEARTBEAT_HEALTH_THRESHOLD.get();
+        laserHeartbeatSlowInterval = LASER_HEARTBEAT_SLOW_INTERVAL.get();
+        laserHeartbeatFastInterval = LASER_HEARTBEAT_FAST_INTERVAL.get();
+        laserBreakSpeed = LASER_BREAK_SPEED.get();
+        laserBreakHardnessWeight = LASER_BREAK_HARDNESS_WEIGHT.get();
+        laserBreakResistanceWeight = LASER_BREAK_RESISTANCE_WEIGHT.get();
+        laserBreakDecay = LASER_BREAK_DECAY.get();
         chestBlastBlockBreakDrops = CHEST_BLAST_BLOCK_BREAK_DROPS.get();
         chestBlastNovaBlockBreakDrops = CHEST_BLAST_NOVA_BLOCK_BREAK_DROPS.get();
         chestBlastNovaBreaksBlocks = CHEST_BLAST_NOVA_BREAKS_BLOCKS.get();
@@ -1663,9 +2216,23 @@ public class Config {
         weightEnlarge = WEIGHT_ENLARGE.get();
         weightPowerAbsorption = WEIGHT_POWER_ABSORPTION.get();
         weightSonicScream = WEIGHT_SONIC_SCREAM.get();
+        sonicScreamDamage = SONIC_SCREAM_DAMAGE.get();
+        sonicScreamPlayerDamageMult = SONIC_SCREAM_PLAYER_DAMAGE_MULT.get();
+        sonicScreamCooldownTicks = SONIC_SCREAM_COOLDOWN_TICKS.get();
         weightHeadPop = WEIGHT_HEAD_POP.get();
         weightEnhancedRegen = WEIGHT_ENHANCED_REGEN.get();
         weightDensity = WEIGHT_DENSITY.get();
+        weightSlime = WEIGHT_SLIME.get();
+        slimeBounceFactor = SLIME_BOUNCE_FACTOR.get();
+        slimeMaxBounce = SLIME_MAX_BOUNCE.get();
+        slimeBounceMinImpact = SLIME_BOUNCE_MIN_IMPACT.get();
+        slimeJumpAmplifier = SLIME_JUMP_AMPLIFIER.get();
+        slimeJumpDuration = SLIME_JUMP_DURATION.get();
+        slimeHopSpeed = SLIME_HOP_SPEED.get();
+        slimeAlwaysActive = SLIME_ALWAYS_ACTIVE.get();
+        slimeDamageTaken = SLIME_DAMAGE_TAKEN.get();
+        slimeKnockbackTaken = SLIME_KNOCKBACK_TAKEN.get();
+        slimeExplosionKnockback = SLIME_EXPLOSION_KNOCKBACK.get();
         densityDamageMultiplier = DENSITY_DAMAGE_REDUCTION.get();
         weightInstakill = WEIGHT_INSTAKILL.get();
         weightMindControl = WEIGHT_MIND_CONTROL.get();
@@ -1700,6 +2267,7 @@ public class Config {
         v1WeightCryokinesis = V1_W_CRYOKINESIS.get();
         v1WeightDeep = V1_W_DEEP.get();
         v1WeightDensity = V1_W_DENSITY.get();
+        v1WeightSlime = V1_W_SLIME.get();
         v1WeightEnhancedRegen = V1_W_ENHANCED_REGEN.get();
         v1WeightEnlarge = V1_W_ENLARGE.get();
         v1WeightExplosive = V1_W_EXPLOSIVE.get();
@@ -1734,6 +2302,8 @@ public class Config {
         v1WeightTelekinesis = V1_W_TELEKINESIS.get();
         v1WeightTeleport = V1_W_TELEPORT.get();
         chestBlastBeamDamage = CHEST_BLAST_BEAM_DAMAGE.get();
+        chestBlastForcefieldDamage = CHEST_BLAST_FORCEFIELD_DAMAGE.get();
+        chestBlastForcefieldKnockback = CHEST_BLAST_FORCEFIELD_KNOCKBACK.get();
         chestBlastBurstDamage = CHEST_BLAST_BURST_DAMAGE.get();
         chestBlastDuration = CHEST_BLAST_DURATION.get();
         chestBlastChargeTime = CHEST_BLAST_CHARGE_TIME.get();
@@ -1751,6 +2321,8 @@ public class Config {
         mobLaserDamage = MOB_LASER_DAMAGE_CONFIG.get(); mobAdvancedLaserDamage = MOB_ADVANCED_LASER_DAMAGE_CONFIG.get();
         powerplexDischargeDamage = POWERPLEX_DISCHARGE_DAMAGE.get(); powerplexDischargeRadius = POWERPLEX_DISCHARGE_RADIUS.get();
         powerplexDischargeTickRate = POWERPLEX_DISCHARGE_TICK_RATE.get();
+        powerplexFocusDamage = POWERPLEX_FOCUS_DAMAGE.get();
+        powerplexFocusRange = POWERPLEX_FOCUS_RANGE.get();
         stormfrontDischargeDamage = STORMFRONT_DISCHARGE_DAMAGE.get(); stormfrontDischargeRadius = STORMFRONT_DISCHARGE_RADIUS.get();
         stormfrontChainDamage = STORMFRONT_CHAIN_DAMAGE.get();
         stormfrontChainFalloff = STORMFRONT_CHAIN_FALLOFF.get();
@@ -1760,11 +2332,6 @@ public class Config {
         stormfrontDischargeTickRate = STORMFRONT_DISCHARGE_TICK_RATE.get();
         chestBlastBlockBreakChance = CHEST_BLAST_BLOCK_BREAK_CHANCE.get();
         chestBlastStripsInvincible = CHEST_BLAST_STRIPS_INVINCIBLE.get();
-        mobPowerCreativeFlight = MOB_POWER_CREATIVE_FLIGHT.get();
-        mobPowerChestBlast = MOB_POWER_CHEST_BLAST.get();
-        mobPowerForcefield = MOB_POWER_FORCEFIELD.get();
-        mobPowerPyrokinesis = MOB_POWER_PYROKINESIS.get();
-        mobPowerCryokinesis = MOB_POWER_CRYOKINESIS.get();
         mobPyroFireCooldown = MOB_PYRO_FIRE_COOLDOWN.get();
         mobCryoFireCooldown = MOB_CRYO_FIRE_COOLDOWN.get();
         mobProjectileRange = MOB_PROJECTILE_RANGE.get();
@@ -1772,9 +2339,6 @@ public class Config {
         mobPyroMaxCharges = MOB_PYRO_MAX_CHARGES.get();
         mobCryoMaxCharges = MOB_CRYO_MAX_CHARGES.get();
         mobChargeRegenTicks = MOB_CHARGE_REGEN_TICKS.get();
-        mobPowerLeap = MOB_POWER_LEAP.get();
-        mobPowerExplosive = MOB_POWER_EXPLOSIVE.get();
-        mobPowerHealing = MOB_POWER_HEALING.get();
         mobChestBlastWeight = MOB_CHEST_BLAST_WEIGHT.get();
         mobChestBlastStripsPowers = MOB_CHEST_BLAST_STRIPS_POWERS.get();
         mobChestBlastInaccuracy = MOB_CHEST_BLAST_INACCURACY.get();
@@ -1784,20 +2348,6 @@ public class Config {
         friendlyMobDamageReduction = FRIENDLY_MOB_DAMAGE_REDUCTION.get();
         friendlyMobStrengthMultiplier = FRIENDLY_MOB_STRENGTH_MULTIPLIER.get();
         friendlyMobKnockbackReduction = FRIENDLY_MOB_KNOCKBACK_REDUCTION.get();
-        mobPowerSpeedster = MOB_POWER_SPEEDSTER.get();
-        mobPowerDeep = MOB_POWER_DEEP.get();
-        mobPowerTeleport = MOB_POWER_TELEPORT.get();
-        mobPowerAtomCharging = MOB_POWER_ATOM_CHARGING.get();
-        mobPowerInvisibility = MOB_POWER_INVISIBILITY.get();
-        mobPowerInvincible = MOB_POWER_INVINCIBLE.get();
-        mobPowerLaserBasic = MOB_POWER_LASER_BASIC.get();
-        mobPowerLaserAdvanced = MOB_POWER_LASER_ADVANCED.get();
-        mobPowerEnhancedRegen = MOB_POWER_ENHANCED_REGEN.get();
-        mobPowerBerserker = MOB_POWER_BERSERKER.get();
-        mobPowerProjectileImmunity = MOB_POWER_PROJECTILE_IMMUNITY.get();
-        mobPowerMagnetism = MOB_POWER_MAGNETISM.get();
-        mobPowerShrink = MOB_POWER_SHRINK.get();
-        mobPowerEnlarge = MOB_POWER_ENLARGE.get();
         // mobPowerCreativeFlight and mobPowerChestBlast are loaded above with chestBlastStripsInvincible
         laserBasicDamage = LASER_BASIC_DAMAGE.get();
         laserAdvancedDamage = LASER_ADVANCED_DAMAGE.get();
@@ -1809,6 +2359,7 @@ public class Config {
         laserVisualMode = LASER_VISUAL_MODE.get();
         enableMobPowers = ENABLE_MOB_POWERS.get();
         persistPowersOnDeath = PERSIST_POWERS_ON_DEATH.get();
+        persistFailureEffectsOnDeath = PERSIST_FAILURE_EFFECTS_ON_DEATH.get();
         virusRemovesPowerOnDeath = VIRUS_REMOVES_POWER_ON_DEATH.get();
         mobPowerSpawnChance = MOB_POWER_SPAWN_CHANCE.get();
         mobCompoundVDropChance = MOB_COMPOUND_V_DROP_CHANCE.get();
@@ -1871,6 +2422,7 @@ public class Config {
         mapTier(blueduck.compound_v.registry.EffectReg.INVISIBILITY, TIER_INVISIBILITY);
         mapTier(blueduck.compound_v.registry.EffectReg.DEEP, TIER_DEEP);
         mapTier(blueduck.compound_v.registry.EffectReg.DENSITY, TIER_DENSITY);
+        mapTier(blueduck.compound_v.registry.EffectReg.SLIME, TIER_SLIME);
         mapTier(blueduck.compound_v.registry.EffectReg.ENLARGE, TIER_ENLARGE);
         mapTier(blueduck.compound_v.registry.EffectReg.SHRINK, TIER_SHRINK);
         mapTier(blueduck.compound_v.registry.EffectReg.LUCK, TIER_LUCK);
@@ -1882,6 +2434,15 @@ public class Config {
         mapTier(blueduck.compound_v.registry.EffectReg.STAR_POWER, TIER_STAR_POWER);
         mapTier(blueduck.compound_v.registry.EffectReg.FORCEFIELD, TIER_FORCEFIELD);
         mapTier(blueduck.compound_v.registry.EffectReg.SPIDER, TIER_SPIDER);
+    }
+
+    /** Resolve an effect registry id (default namespace compound_v) to a MobEffect, or null. */
+    private static net.minecraft.world.effect.MobEffect resolveEffectId(String id) {
+        if (id == null || id.isEmpty()) return null;
+        net.minecraft.resources.ResourceLocation rl = id.contains(":")
+                ? new net.minecraft.resources.ResourceLocation(id)
+                : new net.minecraft.resources.ResourceLocation("compound_v", id);
+        return net.minecraftforge.registries.ForgeRegistries.MOB_EFFECTS.getValue(rl);
     }
 
     private static void mapTier(net.minecraftforge.registries.RegistryObject<net.minecraft.world.effect.MobEffect> effect, ForgeConfigSpec.ConfigValue<String> cfg) {

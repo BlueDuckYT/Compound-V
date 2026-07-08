@@ -35,11 +35,12 @@ public class ForcefieldRenderLayer extends RenderLayer<AbstractClientPlayer, Pla
                        AbstractClientPlayer player, float limbSwing, float limbSwingAmount,
                        float partialTick, float ageInTicks, float netHeadYaw, float headPitch) {
 
+        // Forcefield active-state and health are broadcast to all trackers AND self via
+        // S2CForcefieldSyncPacket -> ClientForcefieldData, so the render reads the same synced
+        // source for everyone. (No amplifier or server-side map is consulted client-side.)
         if (!player.hasEffect(EffectReg.FORCEFIELD.get())) return;
-
-        // Amplifier 1 = active, 0 = inactive
-        var inst = player.getEffect(EffectReg.FORCEFIELD.get());
-        if (inst == null || inst.getAmplifier() < 1) return;
+        boolean active = blueduck.compound_v.util.ClientForcefieldData.isActive(player.getId());
+        if (!active) return;
 
         int color = Math.abs(player.getUUID().hashCode()) % 2;
 
@@ -53,9 +54,9 @@ public class ForcefieldRenderLayer extends RenderLayer<AbstractClientPlayer, Pla
             r = 1.0f; g = 0.85f; b = 0.3f;
         }
 
-        // Shield health drives ONLY transparency now: full = bright, low = faint. Shimmer and
-        // UV scroll run at a constant rate (no "sluggish at low health" change — unwanted).
-        float frac = ForcefieldEffect.getHealthFraction(player.getUUID());
+        // Shield health drives transparency: full = bright, low = faint. Shimmer and UV scroll run
+        // at a constant rate regardless of health.
+        float frac = blueduck.compound_v.util.ClientForcefieldData.getHealth(player.getId());
         float baseAlpha = 0.08f + 0.22f * frac;
         float shimmer = 0.04f * (float) Math.sin(ageInTicks * 0.08);
         float alpha = baseAlpha + shimmer;
@@ -67,12 +68,11 @@ public class ForcefieldRenderLayer extends RenderLayer<AbstractClientPlayer, Pla
 
         poseStack.pushPose();
 
-        // IMPORTANT coordinate-space note (this is why the bubble kept rendering "too low"):
-        // RenderLayer runs inside LivingEntityRenderer's model space, which is FLIPPED — the
-        // model applies scale(-1,-1,1), so here +Y points DOWN and the origin is at the player's
-        // HEAD, not the feet. Earlier fixes nudged Y in this flipped frame and made it worse.
-        // We correct it once, up front: flip Y back to +Y-up and move the origin to the feet.
-        // After this, bottomY/topY are intuitive world coordinates measured up from the feet.
+        // Coordinate-space note: RenderLayer runs inside LivingEntityRenderer's model space, which
+        // is FLIPPED - the model applies scale(-1,-1,1), so here +Y points DOWN and the origin is
+        // at the player's HEAD, not the feet. We correct it once, up front: flip Y back to +Y-up
+        // and move the origin to the feet, after which bottomY/topY are intuitive world coordinates
+        // measured up from the feet.
         poseStack.scale(1.0F, -1.0F, 1.0F);                 // undo the model's Y flip (+Y now up)
         poseStack.translate(0.0F, -player.getBbHeight(), 0.0F); // origin from head -> feet
 

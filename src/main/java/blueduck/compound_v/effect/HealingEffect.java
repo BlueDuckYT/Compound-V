@@ -28,14 +28,25 @@ import net.minecraft.world.phys.Vec3;
  */
 public class HealingEffect extends CompoundVEffect {
 
-    private static final float PLAYER_HEAL_PER_TICK = 0.5f;  // 10 HP/sec — strong but not instant
+    private static final float PLAYER_HEAL_PER_TICK = 0.5f;  // healing a target you look at
+    // Self-heal (sneak + hold V) is slower than target healing and only kicks in after a short
+    // window without taking damage, so you can't just tank hits and top yourself off mid-fight.
+    private static final float SELF_HEAL_PER_TICK = 0.2f;
     private static final float MOB_AURA_HEAL_PER_SEC = 0.5f;
     private static final double MOB_AURA_RANGE = 5.0;
     private static final double PLAYER_HEAL_RANGE = 5.0;
     private static final float SELF_REGEN_PER_SEC = 0.5f;
 
+    // Game-time tick each healer last took damage; self-heal is blocked until enough ticks pass.
+    private static final java.util.Map<java.util.UUID, Long> lastDamageTick = new java.util.concurrent.ConcurrentHashMap<>();
+
     public HealingEffect(MobEffectCategory category) {
         super(category);
+    }
+
+    /** Record that a Healing user took damage, resetting the self-heal delay. */
+    public static void onPlayerDamaged(java.util.UUID playerUUID, long gameTime) {
+        lastDamageTick.put(playerUUID, gameTime);
     }
 
     @Override
@@ -53,6 +64,25 @@ public class HealingEffect extends CompoundVEffect {
 
     @Override
     public void holdActivate(ServerPlayer player, int amplifier, ServerLevel level) {
+        // Sneak + hold V = heal YOURSELF instead of the entity you're looking at. Self-heal is
+        // slower than target healing and only works after a short window with no damage taken.
+        if (player.isShiftKeyDown()) {
+            long now = level.getGameTime();
+            long lastHit = lastDamageTick.getOrDefault(player.getUUID(), 0L);
+            boolean outOfCombat = (now - lastHit) >= blueduck.compound_v.Config.healingSelfDelayTicks;
+            if (outOfCombat && player.getHealth() < player.getMaxHealth()) {
+                player.heal((float) blueduck.compound_v.Config.healingSelfPerTick);
+                // Heart particles around the player + a golden self glow.
+                level.sendParticles(ParticleTypes.HEART,
+                        player.getX(), player.getY() + player.getBbHeight() + 0.3, player.getZ(),
+                        1, 0.3, 0.2, 0.3, 0.0);
+                level.sendParticles(ParticleTypes.GLOW,
+                        player.getX(), player.getY() + player.getBbHeight() * 0.6, player.getZ(),
+                        2, 0.3, 0.4, 0.3, 0.0);
+            }
+            return;
+        }
+
         // Raycast for entity in front of player within reach range
         Vec3 eyePos = player.getEyePosition(1.0f);
         Vec3 lookDir = player.getLookAngle();

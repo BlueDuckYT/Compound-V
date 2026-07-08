@@ -16,6 +16,11 @@ public class GenericEffect extends CompoundVEffect {
         super(category);
     }
 
+    /** Highest valid amplifier for Generic (the top tier, S). Used as the level-up ceiling. */
+    public static int maxTierAmplifier() {
+        return LEVEL_TO_TIER.length - 1; // 4 = S tier
+    }
+
     private static PowerTier tierForAmplifier(int amplifier) {
         if (amplifier < 0) return PowerTier.D;
         if (amplifier >= LEVEL_TO_TIER.length) return PowerTier.S;

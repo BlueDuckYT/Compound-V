@@ -10,6 +10,7 @@ import net.minecraft.world.effect.MobEffectCategory;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.phys.AABB;
+import net.minecraft.world.phys.Vec3;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -124,23 +125,76 @@ public class PowerAbsorptionEffect extends CompoundVEffect {
         lastDischargeTick.put(uuid, now);
         float drainPerTick = 1.0f;
         chargeMap.put(uuid, Math.max(0, charge - drainPerTick));
+        net.minecraft.world.damagesource.DamageSource source = player.damageSources().playerAttack(player);
+        int chargeDisplay = (int) (getChargePercent(uuid) * 100);
+
+        // FOCUSED MODE: if you're LOOKING AT a single mob (no crouch needed), channel concentrated
+        // energy into just that target for much higher damage - enough to melt one mob quickly -
+        // instead of the area discharge. Looking at nothing falls back to the AOE burst below.
+        LivingEntity focus = getLookedAtEntity(player, level,
+                blueduck.compound_v.Config.powerplexFocusRange);
+        if (focus != null) {
+            float focusDamage = (float) blueduck.compound_v.Config.powerplexFocusDamage * percent;
+            // Reset the hit-immunity window so every channel tick lands (otherwise iframes eat
+            // most of the rapid ticks and the "melt one target" never happens). This is the
+            // focused beam's whole point - concentrated, uninterrupted damage on one mob.
+            focus.invulnerableTime = 0;
+            CompoundVEffect.powerHurt(focus, source, focusDamage);
+            player.displayClientMessage(net.minecraft.network.chat.Component.literal(
+                    "§b§lChanneling... §6" + chargeDisplay + "%"), true);
+            // Concentrated beam of sparks from player to the focused target.
+            Vec3 from = player.position().add(0, player.getBbHeight() * 0.6, 0);
+            Vec3 to = focus.position().add(0, focus.getBbHeight() * 0.5, 0);
+            Vec3 dir = to.subtract(from);
+            int steps = (int) (dir.length() * 3) + 1;
+            for (int i = 0; i <= steps; i++) {
+                double t = (double) i / steps;
+                Vec3 p = from.add(dir.scale(t));
+                level.sendParticles(ParticleTypes.ELECTRIC_SPARK, p.x, p.y, p.z, 1, 0.04, 0.04, 0.04, 0.0);
+            }
+            level.sendParticles(ParticleTypes.ELECTRIC_SPARK,
+                    focus.getX(), focus.getY() + focus.getBbHeight() * 0.5, focus.getZ(),
+                    6, 0.2, 0.3, 0.2, 0.1);
+            level.playSound(null, focus.getX(), focus.getY(), focus.getZ(),
+                    SoundEvents.LIGHTNING_BOLT_IMPACT, SoundSource.PLAYERS, 0.4F, 1.8F);
+            return;
+        }
+
         double radius = blueduck.compound_v.Config.powerplexDischargeRadius;
         float damage = (float) blueduck.compound_v.Config.powerplexDischargeDamage * percent;
-        int chargeDisplay = (int) (getChargePercent(uuid) * 100);
         player.displayClientMessage(net.minecraft.network.chat.Component.literal("§c§lDischarging... §6" + chargeDisplay + "%"), true);
         level.sendParticles(ParticleTypes.ELECTRIC_SPARK, player.getX(), player.getY() + player.getBbHeight() * 0.5, player.getZ(),
                 (int) (8 + 12 * percent), radius * 0.3, 0.5, radius * 0.3, 0.15);
         level.playSound(null, player.getX(), player.getY(), player.getZ(), SoundEvents.LIGHTNING_BOLT_IMPACT, SoundSource.PLAYERS, 0.3F, 1.5F);
         AABB searchBox = player.getBoundingBox().inflate(radius);
-        net.minecraft.world.damagesource.DamageSource source = player.damageSources().playerAttack(player);
         for (net.minecraft.world.entity.Entity e : level.getEntities(player, searchBox,
                 ent -> ent instanceof LivingEntity && ent.isAlive() && ent != player)) {
             LivingEntity target = (LivingEntity) e;
             if (target.distanceTo(player) > radius) continue;
             target.invulnerableTime = 0;
-            target.hurt(source, damage);
+            CompoundVEffect.powerHurt(target, source, damage);
             level.sendParticles(ParticleTypes.ELECTRIC_SPARK, target.getX(), target.getY() + target.getBbHeight() * 0.5, target.getZ(), 3, 0.2, 0.2, 0.2, 0.05);
         }
+    }
+
+    /** Raycast for the single living entity the player is looking at, within range. */
+    private static LivingEntity getLookedAtEntity(ServerPlayer player, ServerLevel level, double range) {
+        Vec3 eye = player.getEyePosition(1.0f);
+        Vec3 look = player.getLookAngle();
+        Vec3 end = eye.add(look.scale(range));
+        AABB box = player.getBoundingBox().expandTowards(look.scale(range)).inflate(1.0);
+        LivingEntity best = null;
+        double closest = range + 1;
+        for (net.minecraft.world.entity.Entity e : level.getEntities(player, box,
+                ent -> ent instanceof LivingEntity && ent.isAlive() && ent != player)) {
+            AABB eb = e.getBoundingBox().inflate(0.3);
+            var hit = eb.clip(eye, end);
+            if (hit.isPresent()) {
+                double d = eye.distanceTo(hit.get());
+                if (d < closest) { closest = d; best = (LivingEntity) e; }
+            }
+        }
+        return best;
     }
 
     private static final Map<UUID, Long> lastDischargeTick = new ConcurrentHashMap<>();

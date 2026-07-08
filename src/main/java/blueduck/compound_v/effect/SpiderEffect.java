@@ -11,6 +11,7 @@ import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.effect.MobEffectCategory;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.ai.attributes.AttributeMap;
 import net.minecraft.world.entity.player.Player;
@@ -42,6 +43,7 @@ public class SpiderEffect extends CompoundVEffect {
         int activeWebId = -1;
         long lastHeldTick = -100;
         double ropeLength = -1;
+        double mobRopeLength = -1;        // rope length when a mob is latched (player is the anchor)
         boolean wasRoped = false;
         long lastFireTick = -100; // cooldown gate for firing webs
         boolean releasedInFlight = false; // V released before the web stuck -> cut on stick
@@ -66,6 +68,15 @@ public class SpiderEffect extends CompoundVEffect {
 
     private static SpiderState state(UUID uuid) {
         return stateMap.computeIfAbsent(uuid, k -> new SpiderState());
+    }
+
+    /**
+     * Reset a player's spider state. Called on dimension change and respawn: the active web
+     * projectile from the old dimension/life is gone, but its id (and hold/cooldown state) would
+     * otherwise linger in the state map and could wedge web-firing until the effect is re-applied.
+     */
+    public static void resetState(UUID uuid) {
+        stateMap.remove(uuid);
     }
 
     @Override
@@ -94,8 +105,68 @@ public class SpiderEffect extends CompoundVEffect {
         discardActiveWeb(level, s);
 
         WebProjectileEntity web = new WebProjectileEntity(level, player);
+
+        if (Config.spiderRaycastWebbing) {
+            // Raycast/hitscan webbing: instantly anchor at the first block or mob along the look
+            // vector, with no traveling projectile. The web entity is still used (so all the
+            // swing/latch/reel logic works unchanged) — it's just placed already-stuck.
+            Vec3 eye = player.getEyePosition(1.0F);
+            Vec3 look = player.getLookAngle();
+            double reach = Config.spiderMaxRope + 4.0;
+            Vec3 end = eye.add(look.scale(reach));
+
+            // Entity raycast first (mobs take priority within block range).
+            net.minecraft.world.phys.BlockHitResult bhr = level.clip(new net.minecraft.world.level.ClipContext(
+                    eye, end, net.minecraft.world.level.ClipContext.Block.COLLIDER,
+                    net.minecraft.world.level.ClipContext.Fluid.NONE, player));
+            double blockDist = bhr.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK
+                    ? eye.distanceTo(bhr.getLocation()) : reach;
+
+            LivingEntity hitMob = null;
+            Vec3 hitMobPoint = null;
+            double bestMobDist = blockDist;
+            net.minecraft.world.phys.AABB scan = player.getBoundingBox().expandTowards(look.scale(reach)).inflate(1.0);
+            for (Entity e : level.getEntities(player, scan, en -> en instanceof LivingEntity && en.isPickable())) {
+                net.minecraft.world.phys.AABB eb = e.getBoundingBox().inflate(0.3);
+                java.util.Optional<Vec3> clip = eb.clip(eye, end);
+                if (clip.isPresent()) {
+                    double d = eye.distanceTo(clip.get());
+                    if (d < bestMobDist) { bestMobDist = d; hitMob = (LivingEntity) e; hitMobPoint = clip.get(); }
+                }
+            }
+
+            if (hitMob != null) {
+                web.forceStickToMob(hitMob);
+                level.addFreshEntity(web);
+            } else if (bhr.getType() == net.minecraft.world.phys.HitResult.Type.BLOCK) {
+                web.forceStickToBlock(bhr.getLocation());
+                level.addFreshEntity(web);
+            } else {
+                // Nothing in range — no anchor, don't spawn a dangling web.
+                return;
+            }
+            s.activeWebId = web.getId();
+            s.ropeLength = -1;
+            s.mobRopeLength = -1;
+            s.lastHeldTick = now;
+            s.releasedInFlight = false;
+            level.playSound(null, player.getX(), player.getY(), player.getZ(),
+                    SoundEvents.CROSSBOW_SHOOT, SoundSource.PLAYERS, 0.5F, 1.8F);
+            return;
+        }
+
         web.shootFromRotation(player, player.getXRot(), player.getYRot(), 0.0F,
                 (float) Config.spiderWebSpeed, 0.5F);
+        // Fall compensation: shootFromRotation launches the web in the world frame and ignores
+        // the player's own motion. While falling, that means the web barely climbs relative to
+        // you (you drop as it rises), making ceilings hard to hit. Add the player's downward
+        // velocity back into the web so it leaves YOU at the full intended speed. Only the
+        // downward component is added (we don't want to fling the web sideways with your run).
+        Vec3 pv = player.getDeltaMovement();
+        if (pv.y < 0) {
+            double comp = -pv.y * Config.spiderWebFallCompensation; // positive upward boost
+            web.setDeltaMovement(web.getDeltaMovement().add(0, comp, 0));
+        }
         level.addFreshEntity(web);
         s.activeWebId = web.getId();
         s.ropeLength = -1;
@@ -172,17 +243,38 @@ public class SpiderEffect extends CompoundVEffect {
 
         if (!armedHit && !heldHit) return;
 
-        // Fling NOW, in the punch-moment look direction.
         Vec3 look = player.getLookAngle();
-        mob.setDeltaMovement(look.scale(Config.spiderFlingForce).add(0, 0.3, 0));
-        mob.hurtMarked = true;
-        mob.fallDistance = 0;
-        mob.invulnerableTime = 0;
-        mob.hurt(player.damageSources().playerAttack(player), (float) Config.spiderFlingDamage);
-        level.sendParticles(net.minecraft.core.particles.ParticleTypes.CRIT,
-                mob.getX(), mob.getY() + mob.getBbHeight() * 0.5, mob.getZ(), 14, 0.3, 0.3, 0.3, 0.2);
-        level.playSound(null, mob.getX(), mob.getY(), mob.getZ(),
-                SoundEvents.PLAYER_ATTACK_KNOCKBACK, SoundSource.PLAYERS, 1.0F, 1.0F);
+        // SLAM vs FLING is chosen by where you're aiming at the punch moment: looking steeply
+        // DOWN slams the mob into the ground (big downward force + impact damage + shockwave);
+        // otherwise it flings forward as before. Same input, the camera angle picks the move.
+        boolean slam = player.getXRot() > Config.spiderSlamPitchThreshold;
+
+        if (slam) {
+            // Drive the mob hard into the ground.
+            mob.setDeltaMovement(look.x * 0.4, -Config.spiderSlamForce, look.z * 0.4);
+            mob.hurtMarked = true;
+            mob.fallDistance = 0;
+            // Bonus damage respects normal hit-immunity so it doesn't stack on top of the melee
+            // hit that triggered this — invulnerableTime is intentionally left untouched.
+            CompoundVEffect.powerHurt(mob, player.damageSources().playerAttack(player), (float) Config.spiderSlamDamage);
+            level.sendParticles(net.minecraft.core.particles.ParticleTypes.CRIT,
+                    mob.getX(), mob.getY() + 0.2, mob.getZ(), 18, 0.4, 0.1, 0.4, 0.3);
+            level.sendParticles(net.minecraft.core.particles.ParticleTypes.EXPLOSION,
+                    mob.getX(), mob.getY(), mob.getZ(), 1, 0, 0, 0, 0);
+            level.playSound(null, mob.getX(), mob.getY(), mob.getZ(),
+                    SoundEvents.PLAYER_ATTACK_SWEEP, SoundSource.PLAYERS, 1.2F, 0.6F);
+        } else {
+            // Fling NOW, in the punch-moment look direction.
+            mob.setDeltaMovement(look.scale(Config.spiderFlingForce).add(0, 0.3, 0));
+            mob.hurtMarked = true;
+            mob.fallDistance = 0;
+            // Bonus damage respects normal hit-immunity so it doesn't stack uncapped.
+            CompoundVEffect.powerHurt(mob, player.damageSources().playerAttack(player), (float) Config.spiderFlingDamage);
+            level.sendParticles(net.minecraft.core.particles.ParticleTypes.CRIT,
+                    mob.getX(), mob.getY() + mob.getBbHeight() * 0.5, mob.getZ(), 14, 0.3, 0.3, 0.3, 0.2);
+            level.playSound(null, mob.getX(), mob.getY(), mob.getZ(),
+                    SoundEvents.PLAYER_ATTACK_KNOCKBACK, SoundSource.PLAYERS, 1.0F, 1.0F);
+        }
 
         // Consume all fling state and cut any web so the mob flies free.
         s.fastReelUntil = -1;
@@ -206,21 +298,19 @@ public class SpiderEffect extends CompoundVEffect {
 
         if (web.isOnMob()) {
             Entity tgt = level.getEntity(web.getStuckEntity());
-            if (tgt instanceof LivingEntity mob && dir < 0) { // scroll DOWN pulls mob toward you
-                Vec3 toPlayer = player.position().add(0, 0.4, 0).subtract(mob.position());
-                double d = toPlayer.length();
-                if (d > 1.0) {
-                    double speed = Math.min(1.5, d * 0.25 + 0.3);
-                    Vec3 vel = toPlayer.normalize().scale(speed);
-                    mob.setDeltaMovement(vel);
-                    mob.hurtMarked = true;
-                    mob.fallDistance = 0;
-                    // If reeled in toward you and now reasonably close, "prime" a window: punch
-                    // it during the window and it's flung. Generous thresholds so the combo is
-                    // easy to land consistently.
-                    if (speed > 0.5 && d < 7.0) {
-                        s.fastReelUntil = level.getGameTime() + 40; // ~2s window
-                    }
+            if (tgt instanceof LivingEntity mob) {
+                // Initialize the rope length from the current player->mob distance.
+                if (s.mobRopeLength < 0) {
+                    s.mobRopeLength = player.position().add(0, 0.4, 0).distanceTo(mob.position());
+                }
+                // Scroll DOWN shortens the rope (reel the mob up toward you / tighten); scroll UP
+                // lengthens it (lower the mob). Same feel as the block-anchor reel.
+                s.mobRopeLength = Math.max(Config.spiderMinRope,
+                        Math.min(Config.spiderMaxRope, s.mobRopeLength + dir * Config.spiderReelStep));
+                // Reeling all the way in primes the punch-fling window.
+                double d = player.position().add(0, 0.4, 0).distanceTo(mob.position());
+                if (dir < 0 && d < 7.0) {
+                    s.fastReelUntil = level.getGameTime() + 40;
                 }
             }
         } else {
@@ -282,6 +372,15 @@ public class SpiderEffect extends CompoundVEffect {
             // Roped to a block -> keep server-side rope/fall bookkeeping (swing is client-side).
             applySwing(player, web.getStuckPos(), s);
             ropedThisTick = true;
+        } else if (web != null && web.isStuck() && web.isOnMob()) {
+            // Latched to a MOB -> the mob hangs from the player as a pendulum (player is the
+            // anchor, mob is the bob). Full physics run server-side since mobs aren't client-
+            // predicted. Scroll tightens/lowers the rope (handled in scrollAdjust).
+            Entity tgt = level.getEntity(web.getStuckEntity());
+            if (tgt instanceof LivingEntity mob) {
+                applyMobSwing(player, mob, s);
+                ropedThisTick = true;
+            }
         }
         // (in-flight webs complete their arc on their own; mob latches persist for scroll-reel)
         s.wasRoped = ropedThisTick;
@@ -317,6 +416,78 @@ public class SpiderEffect extends CompoundVEffect {
         double dist = anchor.subtract(pos).length();
         if (s.ropeLength < 0) s.ropeLength = dist;
         player.resetFallDistance();
+    }
+
+    /**
+     * Pendulum physics for a mob latched to the web, with the PLAYER as the anchor. The mob
+     * hangs at the configured rope length (set/changed via scroll), gravity pulls it down, and
+     * the rope constraint converts that into a pendulum swing — the inverse of the player
+     * swinging from a block. Runs server-side because mobs aren't client-predicted.
+     */
+    private void applyMobSwing(ServerPlayer player, LivingEntity mob, SpiderState s) {
+        Vec3 anchor = player.position().add(0, player.getBbHeight() * 0.5, 0);
+        Vec3 mobPos = mob.position().add(0, mob.getBbHeight() * 0.5, 0);
+        Vec3 toAnchor = anchor.subtract(mobPos);
+        double dist = toAnchor.length();
+        if (dist < 1.0e-4) return;
+        if (s.mobRopeLength < 0) s.mobRopeLength = dist;
+
+        Vec3 ropeDir = toAnchor.normalize();
+        Vec3 motion = mob.getDeltaMovement();
+
+        // Gravity tug on the bob (gentle, so it swings rather than plummets).
+        motion = motion.add(0, -0.05, 0);
+
+        // Mass resistance (optional): heavier mobs reel in slower. Can be disabled in config if
+        // it feels off — then mass is treated as 1.0 (no resistance).
+        double mass = Config.spiderReelMassEnabled ? mobMass(mob) : 1.0;
+
+        // Rope constraint: if the mob is past the rope length, remove outward velocity and pull
+        // it back toward the rope length (spring). HEAVIER mobs resist (slower pull), and the
+        // spring is gentle so reeling is gradual rather than a near-instant snap.
+        if (dist > s.mobRopeLength) {
+            double outward = motion.dot(ropeDir); // component AWAY from anchor is negative dot
+            if (outward < 0) motion = motion.subtract(ropeDir.scale(outward));
+            double overshoot = dist - s.mobRopeLength;
+            double springPull = (overshoot * Config.spiderMobReelSpring) / mass;
+            // Cap the inward speed gained per tick so even a big rope change reels in smoothly.
+            springPull = Math.min(springPull, Config.spiderMobReelMaxSpeed);
+            motion = motion.add(ropeDir.scale(springPull));
+        }
+        // Extra active pull when the rope is shorter than the current distance — also mass-scaled.
+        if (s.mobRopeLength < dist - 0.1) {
+            double pull = Config.spiderReelPull / mass;
+            motion = motion.add(ropeDir.scale(pull));
+        }
+
+        // Light damping so it settles instead of oscillating forever.
+        motion = motion.scale(0.98);
+
+        mob.setDeltaMovement(motion);
+        mob.hurtMarked = true;
+        mob.fallDistance = 0;
+        // Mobs try to path on their own; mark so the swing motion isn't immediately overridden.
+        if (mob instanceof Mob m) m.getNavigation().stop();
+    }
+
+    /**
+     * Rough "mass" estimate for reel resistance, ≥1.0. Combines the mob's max health and its
+     * size (hitbox volume × Pehkui scale) so a tanky and/or large mob is heavier and reels in
+     * more slowly. Tuned by config weights; clamped so even huge mobs stay haulable.
+     */
+    private static double mobMass(LivingEntity mob) {
+        double health = mob.getMaxHealth();                 // e.g. 20 for most, 100 for an iron golem
+        double size = mob.getBbWidth() * mob.getBbWidth() * mob.getBbHeight(); // hitbox volume
+        double scale = 1.0;
+        if (net.minecraftforge.fml.ModList.get().isLoaded("pehkui")) {
+            scale = blueduck.compound_v.util.PehkuiHelper.getCurrentScale(mob);
+        }
+        size *= scale * scale * scale; // volume scales with cube of linear scale
+
+        double mass = 1.0
+                + health * Config.spiderReelHealthWeight
+                + size * Config.spiderReelSizeWeight;
+        return Math.max(1.0, Math.min(mass, Config.spiderReelMaxMass));
     }
 
     // ===== Spider-Sense (passive) =====
@@ -478,6 +649,7 @@ public class SpiderEffect extends CompoundVEffect {
             s.activeWebId = -1;
         }
         s.ropeLength = -1;
+        s.mobRopeLength = -1;
         s.wasRoped = false;
     }
 

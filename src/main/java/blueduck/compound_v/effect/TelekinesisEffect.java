@@ -215,7 +215,7 @@ public class TelekinesisEffect extends CompoundVEffect {
             proj.shoot(look.x, look.y, look.z, (float) Math.max(1.0, force), 0.2F);
         } else if (Config.telekinesisLaunchDamage > 0 && target instanceof LivingEntity living) {
             living.invulnerableTime = 0;
-            living.hurt(player.damageSources().playerAttack(player), (float) Config.telekinesisLaunchDamage);
+            CompoundVEffect.powerHurt(living, player.damageSources().playerAttack(player), (float) Config.telekinesisLaunchDamage);
         }
 
         level.sendParticles(ParticleTypes.CLOUD,

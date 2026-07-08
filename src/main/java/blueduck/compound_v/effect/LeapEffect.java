@@ -178,7 +178,7 @@ public class LeapEffect extends CompoundVEffect {
             if (dist > SLAM_RADIUS) continue;
 
             float falloff = 1.0f - (float) (dist / SLAM_RADIUS) * 0.5f;
-            target.hurt(player.damageSources().playerAttack(player), damage * falloff);
+            CompoundVEffect.powerHurt(target, player.damageSources().playerAttack(player), damage * falloff);
 
             Vec3 knockDir = target.position().subtract(player.position()).normalize();
             target.setDeltaMovement(knockDir.x * 1.2, 0.4, knockDir.z * 1.2);
